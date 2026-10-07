@@ -4,6 +4,8 @@ A Windows-first desktop application with **Grok Build built in**, supporting Gro
 
 **0.6.1 alpha · Windows 10/11 x64 · portable executable.** macOS, Linux and ARM64 are future targets. See [TODO.md](TODO.md), the [parity audit](docs/PARITY.md), and [validation evidence](docs/VALIDATION.md).
 
+[Download the Windows portable executable](https://github.com/robbyjo/Grok-Workbench/releases/download/v0.6.1/Grok-Workbench-0.6.1-Portable.exe) · [SHA-256 checksum](https://github.com/robbyjo/Grok-Workbench/releases/download/v0.6.1/Grok-Workbench-0.6.1-Portable.exe.sha256) · [Release notes](https://github.com/robbyjo/Grok-Workbench/releases/tag/v0.6.1)
+
 ## Run on Windows
 
 1. Put `Grok-Workbench-0.6.1-Portable.exe` in a writable folder and open it. Electron, Node, the native Grok engine and its app-local Microsoft C++ runtime are included. There is no Grok CLI installation step.

@@ -10,6 +10,8 @@ Build/typechecks, all **50 backend tests** and **five packaged GUI scenarios** p
 
 The actual renamed portable launcher passed native MCP/PowerShell PTY and relocation/profile persistence (`portable-workbench.log`). It used the retained `Grok Desktop Data` directory with a seeded existing state schema, then preserved chat metadata and MCP configuration after moving the application/data together. No credentials were used or transferred for this test.
 
+[v0.6.1](https://github.com/robbyjo/Grok-Workbench/releases/tag/v0.6.1) was published on October 7, 2026 as a Windows portable alpha prerelease, with the locally tested executable and `.sha256` sidecar. Both uploaded assets matched GitHub's server-computed SHA-256 digests before publication. The tag resolves to `f4cf6ca8c2756fd431e8dddd9339e528483d0d4a`; later documentation-only changes do not alter this binary. Hosted CI was still running when the release was prepared and is not claimed as a release validation pass.
+
 ## 0.6.0 built-in engine and desktop acceptance
 
 The native engine is built from pinned Apache-2.0 Grok source `2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8` (xai-grok-shell 1.0.45), Cargo.lock and the documented Windows compatibility modifications. Startup uses the original CLI runtime-field resolver before policy clamping; the one-shot disk loader alone had left skipped subagent/MCP fields disabled. The original authentication manager supports OAuth and API keys. The GUI, terminal and runtime do not require a separate Grok installation. Final engine build SHA-256: `224aea18ca39cea11caf5c3658c8e13924c95a2e25d6ec047a1da03eec4104fa`; distributable hashes are recorded separately below.
