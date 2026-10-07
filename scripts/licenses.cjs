@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
 const notices = [
-  'Production dependency license notices for Grok Studio\nGenerated from the installed package-lock.json graph.\n',
+  'Production dependency license notices for Grok Workbench\nGenerated from the installed package-lock.json graph.\n',
 ];
 for (const [location, info] of Object.entries(lock.packages)) {
   if (!location || info.dev) continue;

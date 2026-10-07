@@ -1,12 +1,12 @@
-# Grok Studio
+# Grok Workbench
 
 A Windows-first desktop application with **Grok Build built in**, supporting Grok account OAuth and xAI API keys. The target is comparable local coding workflows to Codex wherever Grok supports them. This is an independent Apache-2.0 project; full workflow parity is still being developed.
 
-**0.6.0 alpha · Windows 10/11 x64 · portable executable.** macOS, Linux and ARM64 are future targets. See [TODO.md](TODO.md), the [parity audit](docs/PARITY.md), and [validation evidence](docs/VALIDATION.md).
+**0.6.1 alpha · Windows 10/11 x64 · portable executable.** macOS, Linux and ARM64 are future targets. See [TODO.md](TODO.md), the [parity audit](docs/PARITY.md), and [validation evidence](docs/VALIDATION.md).
 
 ## Run on Windows
 
-1. Put `Grok-Studio-0.6.0-Portable.exe` in a writable folder and open it. Electron, Node, the native Grok engine and its app-local Microsoft C++ runtime are included. There is no Grok CLI installation step.
+1. Put `Grok-Workbench-0.6.1-Portable.exe` in a writable folder and open it. Electron, Node, the native Grok engine and its app-local Microsoft C++ runtime are included. There is no Grok CLI installation step.
 2. Open a project. In **Settings → Authentication**, choose **Grok account (OAuth)** or **xAI API key**, then **Connect / sign in with selected method**. Complete OAuth in your browser, or enter an API key locally. Keys are session-only by default; optional Windows encrypted storage remembers them for this Windows account and machine.
 3. Send a prompt. Tool approvals and project-trust requests appear above the composer. **Stop turn** cancels the turn. Git and your project's development tools are needed for the corresponding workflows.
 4. Open **Settings → MCP servers** to add a STDIO command or HTTP/SSE endpoint, test the connection, edit configuration, and inspect effective tools/policies. Reconnect after changing configuration. MCP servers can require their own Node/Python/tools and provider sign-in. The optional [official GitHub OAuth MCP integration](docs/GITHUB-MCP.md) has real identity-check acceptance.
@@ -34,7 +34,7 @@ Select **Attach files** for up to five files per prompt, up to 50 MiB each. Imag
 
 ## Data and execution
 
-Portable state, histories, drafts, media, terminal scrollback, diagnostics and the Grok profile live in **`Grok Desktop Data` beside the executable**. Move the executable and that folder together. The legacy directory name is retained for compatibility. Absolute project paths and external MCP dependencies must still exist at their configured locations.
+Portable state, histories, drafts, media, terminal scrollback, diagnostics and the Grok profile live in **`Grok Desktop Data` beside the executable**. Move the executable and that folder together. Grok Workbench retains this legacy directory, application ID and configuration/archive identifiers so the rename preserves existing chats, authentication, attachments and worktree recovery records. Absolute project paths and external MCP dependencies must still exist at their configured locations.
 
 Grok's original authentication manager owns OAuth sign-in/refresh in `Grok Desktop Data/grok`. API keys optionally use Electron's Windows encrypted storage; a copied encrypted key may require re-entry on another computer/account. Normal launches do not copy credentials from other profiles. Cross-machine OAuth credential portability remains an open acceptance gate.
 
@@ -49,8 +49,8 @@ The renderer has no Node access. A sandboxed preload exposes allowlisted, sender
 Developer prerequisites: Node.js **24+**, npm, Git, Rust **1.95.0**, and MSVC C++ build tools/Windows SDK. `PROTOC` can select a protobuf compiler; otherwise a compiler on PATH or a checksum-pinned Windows download is used. The first native build can take several minutes. End users need none of these engine build tools.
 
 ```powershell
-git clone https://github.com/robbyjo/Grok-Studio.git
-cd Grok-Studio
+git clone https://github.com/robbyjo/Grok-Workbench.git
+cd Grok-Workbench
 npm ci
 node node_modules/electron/install.js
 rustup toolchain install 1.95.0 --profile minimal
@@ -73,7 +73,7 @@ npx tsx scripts/media-acceptance.ts --run
 
 Media acceptance does not change account privacy unless `--temporary-retention` is explicitly supplied after obtaining account-holder consent. It records the original setting and restores/verifies it in `finally`.
 
-The original CLI is an optional compatibility/development fixture: `npm run runtime` downloads a pinned executable for CLI import and legacy transport tests. It is excluded from the 0.6.0 distributable. An absolute CLI path can still be selected in Settings; media generation requires the built-in engine.
+The original CLI is an optional compatibility/development fixture: `npm run runtime` downloads a pinned executable for CLI import and legacy transport tests. It is excluded from the current distributable. An absolute CLI path can still be selected in Settings; media generation requires the built-in engine.
 
 The [Windows CI workflow](.github/workflows/windows.yml) builds the pinned Rust source, checks source and packaged GUI tests, launches/relocates the real portable executable, and uploads the executable with a SHA-256 sidecar. It uses no model credentials. In a managed workspace, a Chromium ACL error may require read/execute permission on the Electron runtime directory; keep Chromium's sandbox enabled.
 

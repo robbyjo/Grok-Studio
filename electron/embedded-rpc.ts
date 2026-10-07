@@ -28,7 +28,7 @@ export class EmbeddedRpc extends EventEmitter {
         cwd,
         env,
         stdio: 'pipe',
-        serviceName: 'Grok Studio engine',
+        serviceName: 'Grok Workbench engine',
       });
     else {
       const child = fork(

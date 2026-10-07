@@ -11,7 +11,7 @@ New-Item -ItemType Directory -Path (Join-Path $PWD '.test-data') -Force | Out-Nu
 $taskAcceptance = Join-Path $PWD ('.test-data/live-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $taskAcceptance | Out-Null
 git -C $taskAcceptance init -b main
-git -C $taskAcceptance config user.name 'Grok Studio acceptance'
+git -C $taskAcceptance config user.name 'Grok Workbench acceptance'
 git -C $taskAcceptance config user.email 'acceptance@example.invalid'
 Set-Content -LiteralPath (Join-Path $taskAcceptance 'value.txt') -Value 'original' -Encoding utf8
 git -C $taskAcceptance add value.txt
@@ -19,7 +19,7 @@ git -C $taskAcceptance commit -m 'Acceptance baseline'
 $taskAcceptance
 ```
 
-Open this folder in Grok Studio. Use the built-in engine and **Settings → Authentication → Grok account (OAuth) → Connect / sign in with selected method**, then complete browser sign-in. An API key can instead be entered locally in Settings. Keep the existing permission policy visible; tool approval and folder trust are separate decisions. Record app/engine versions, the selected model/mode, date and the test repository HEAD. Keep credentials out of evidence files.
+Open this folder in Grok Workbench. Use the built-in engine and **Settings → Authentication → Grok account (OAuth) → Connect / sign in with selected method**, then complete browser sign-in. An API key can instead be entered locally in Settings. Keep the existing permission policy visible; tool approval and folder trust are separate decisions. Record app/engine versions, the selected model/mode, date and the test repository HEAD. Keep credentials out of evidence files.
 
 ## Checks and required evidence
 

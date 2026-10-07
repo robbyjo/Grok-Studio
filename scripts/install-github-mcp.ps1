@@ -18,7 +18,7 @@ try {
   New-Item -ItemType Directory -Path $providerTarget -Force | Out-Null
   Copy-Item -LiteralPath $providerExe -Destination $providerTarget
   Get-ChildItem -LiteralPath (Join-Path $providerTemp 'expanded') -File | Where-Object { $_.Name -match '^(LICENSE|NOTICE)' } | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $providerTarget }
-  Write-Output "Installed official GitHub MCP v$providerVersion in $providerTarget. Restart Grok Studio to update PATH."
+  Write-Output "Installed official GitHub MCP v$providerVersion in $providerTarget. Restart Grok Workbench to update PATH."
 } finally {
   $providerResolvedTemp = [IO.Path]::GetFullPath($providerTemp)
   if (!$providerResolvedTemp.StartsWith($providerTempRoot.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe temporary cleanup path.' }

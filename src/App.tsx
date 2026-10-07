@@ -589,7 +589,7 @@ export default function App() {
         <div className="brand">
           <div className="brand-mark">/</div>
           <span>
-            Grok <b>Studio</b>
+            Grok <b>Workbench</b>
           </span>
           <span className="version">α</span>
         </div>
@@ -957,9 +957,7 @@ export default function App() {
                       Open a project
                     </button>
                   )}
-                  <div className="welcome-footnote">
-                    Powered by your installed Grok Build runtime
-                  </div>
+                  <div className="welcome-footnote">Powered by Grok Build</div>
                 </div>
               )}
               <div className="timeline">
@@ -1540,7 +1538,9 @@ export default function App() {
                 </button>
               )}
             </div>
-            <small className="muted">Grok Studio 0.6.0 · Independent client · Windows first</small>
+            <small className="muted">
+              Grok Workbench 0.6.1 · Independent client · Windows first
+            </small>
           </section>
         </div>
       )}

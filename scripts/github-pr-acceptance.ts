@@ -19,18 +19,18 @@ async function main() {
   const github = (args: string[]) =>
     execFileSync(gh, args, { cwd, windowsHide: true, encoding: 'utf8' }).trim();
   if (resume < 0)
-    git(['clone', '--depth', '1', 'https://github.com/robbyjo/Grok-Studio.git', cwd], root);
+    git(['clone', '--depth', '1', 'https://github.com/robbyjo/Grok-Workbench.git', cwd], root);
   const branch =
     resume >= 0
       ? git(['branch', '--show-current'])
       : 'codex/live-pr-acceptance-' + randomUUID().slice(0, 8);
   if (resume < 0) {
     git(['checkout', '-b', branch]);
-    git(['config', 'user.name', 'Grok Studio acceptance']);
+    git(['config', 'user.name', 'Grok Workbench acceptance']);
     git(['config', 'user.email', 'acceptance@example.invalid']);
     writeFileSync(
       join(cwd, 'LIVE-PR-ACCEPTANCE.txt'),
-      'Disposable Grok Studio GUI draft publication acceptance. This branch is not intended to merge.\n',
+      'Disposable Grok Workbench GUI draft publication acceptance. This branch is not intended to merge.\n',
     );
     git(['add', 'LIVE-PR-ACCEPTANCE.txt']);
     git(['commit', '-m', 'test: disposable draft PR publication acceptance']);
@@ -71,9 +71,9 @@ async function main() {
     },
   });
   let url = '';
-  const title = '[Acceptance only] Grok Studio GUI draft PR';
+  const title = '[Acceptance only] Grok Workbench GUI draft PR';
   const body =
-    'This disposable draft validates the Grok Studio native GUI and GitHub CLI integration.\n\nChecks: real listing, reviewed multiline body, draft publication, exact head/base binding.\n\nIt will be closed without merging after validation.';
+    'This disposable draft validates the Grok Workbench native GUI and GitHub CLI integration.\n\nChecks: real listing, reviewed multiline body, draft publication, exact head/base binding.\n\nIt will be closed without merging after validation.';
   try {
     const page = await app.firstWindow();
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
@@ -91,7 +91,7 @@ async function main() {
       await expect(
         modal
           .locator('pre')
-          .filter({ hasText: /https:\/\/github.com\/robbyjo\/Grok-Studio\/pull\/\d+/ }),
+          .filter({ hasText: /https:\/\/github.com\/robbyjo\/Grok-Workbench\/pull\/\d+/ }),
       ).toBeVisible({ timeout: 60000 });
     }
     url =
@@ -100,9 +100,9 @@ async function main() {
         : (
             await modal
               .locator('pre')
-              .filter({ hasText: /https:\/\/github.com\/robbyjo\/Grok-Studio\/pull\/\d+/ })
+              .filter({ hasText: /https:\/\/github.com\/robbyjo\/Grok-Workbench\/pull\/\d+/ })
               .innerText()
-          ).match(/https:\/\/github.com\/robbyjo\/Grok-Studio\/pull\/\d+/)![0];
+          ).match(/https:\/\/github.com\/robbyjo\/Grok-Workbench\/pull\/\d+/)![0];
     const actual = JSON.parse(
       github(['pr', 'view', url, '--json', 'url,isDraft,headRefName,baseRefName,title,body,state']),
     );

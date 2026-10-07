@@ -1,6 +1,14 @@
 # Validation record
 
-Validation performed on Windows x64 on October 6–7, 2026 (America/New_York). Current version: **0.6.0**, with the Grok Rust library embedded instead of a packaged CLI. Earlier sections retain historical version-specific results; they do not describe the current architecture.
+Validation performed on Windows x64 on October 6–7, 2026 (America/New_York). Current version: **Grok Workbench 0.6.1**, with the Grok Rust library embedded instead of a packaged CLI. Earlier sections retain historical version-specific names and results.
+
+## 0.6.1 project rename
+
+The product was renamed to **Grok Workbench**: window/HTML title, sidebar, Settings/about, notifications, ACP client identity, package metadata, portable executable/CI artifact names, launch helper and current repository instructions. The canonical repository is [robbyjo/Grok-Workbench](https://github.com/robbyjo/Grok-Workbench). Existing profile paths, application ID, configuration and archive identifiers are retained for compatibility. The native binding, media/attachment behavior and dependencies are the same as the accepted 0.6.0 engine below. Historical artifact names and hashes remain unchanged in this record.
+
+Build/typechecks, all **50 backend tests** and **five packaged GUI scenarios** passed after the rename, including real local audio playback, image preview, attachment recovery and encrypted-key storage. The renamed portable is **`release/Grok-Workbench-0.6.1-Portable.exe`**, **143,502,822 bytes**, SHA-256 **`2cccfa04249604c69f5db75d4414e37332d1bd5fe131122fb2a2f927a85d6792`**, Authenticode **NotSigned**. Media generation/account privacy logic was not changed or retested with paid requests for this branding patch; the real OAuth acceptance below remains its evidence.
+
+The actual renamed portable launcher passed native MCP/PowerShell PTY and relocation/profile persistence (`portable-workbench.log`). It used the retained `Grok Desktop Data` directory with a seeded existing state schema, then preserved chat metadata and MCP configuration after moving the application/data together. No credentials were used or transferred for this test.
 
 ## 0.6.0 built-in engine and desktop acceptance
 

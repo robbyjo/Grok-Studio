@@ -79,7 +79,7 @@ function emit(event: DesktopEvent) {
           : event.kind === 'complete'
             ? 'Grok turn completed'
             : 'Grok turn stopped',
-      body: 'Open Grok Studio to review the chat.',
+      body: 'Open Grok Workbench to review the chat.',
     });
     const id = event.type === 'permission' ? event.permission.threadId : event.id;
     notice.on('click', () => {
@@ -806,7 +806,7 @@ function createWindow() {
     minWidth: 960,
     minHeight: 640,
     backgroundColor: '#101214',
-    title: 'Grok Studio',
+    title: 'Grok Workbench',
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
@@ -925,7 +925,7 @@ else {
             : 'grok',
       );
     } catch (error) {
-      dialog.showErrorBox('Cannot load Grok Studio', (error as Error).message);
+      dialog.showErrorBox('Cannot load Grok Workbench', (error as Error).message);
       app.quit();
       return;
     }

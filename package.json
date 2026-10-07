@@ -1,9 +1,9 @@
 {
-  "name": "grok-studio",
-  "version": "0.6.0",
+  "name": "grok-workbench",
+  "version": "0.6.1",
   "private": true,
   "description": "Windows-first desktop client for Grok Build",
-  "author": "Grok Studio contributors",
+  "author": "Grok Workbench contributors",
   "license": "Apache-2.0",
   "main": "dist-electron/electron/main.js",
   "scripts": {
@@ -57,7 +57,7 @@
   },
   "build": {
     "appId": "dev.grokdesktop.app",
-    "productName": "Grok Studio",
+    "productName": "Grok Workbench",
     "directories": {
       "output": "release"
     },
@@ -96,7 +96,7 @@
       "target": "portable"
     },
     "portable": {
-      "artifactName": "Grok-Studio-${version}-Portable.exe"
+      "artifactName": "Grok-Workbench-${version}-Portable.exe"
     },
     "nsis": {
       "oneClick": false,

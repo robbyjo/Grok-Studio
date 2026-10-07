@@ -1,6 +1,6 @@
 # Embedded Grok Build source
 
-Grok Studio embeds xai-org/grok-build at revision
+Grok Workbench embeds xai-org/grok-build at revision
 `2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8` (Apache-2.0) as a Rust library.
 `scripts/engine-source.cjs` applies these modifications to the pinned checkout:
 

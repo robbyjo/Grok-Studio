@@ -52,7 +52,7 @@ async function main() {
   if (!/^[A-Za-z]:\\/.test(root) || !root.endsWith(token))
     throw new Error('Unexpected remote acceptance path.');
   const quote = (value: string) => "'" + value.replaceAll("'", "''") + "'";
-  const exe = `Grok-Studio-${version}-Portable.exe`;
+  const exe = `Grok-Workbench-${version}-Portable.exe`;
   await execute(
     'scp',
     [...sshArgs, resolve('release', exe), `${host}:${root.replaceAll('\\', '/')}/${exe}`],

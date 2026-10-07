@@ -9,12 +9,12 @@ import assert from 'node:assert/strict';
 
 async function main() {
   const meta = JSON.parse(await readFile('package.json', 'utf8'));
-  const executableName = `Grok-Studio-${meta.version}-Portable.exe`;
+  const executableName = `Grok-Workbench-${meta.version}-Portable.exe`;
   await mkdir('.test-data', { recursive: true });
   const root = await mkdtemp(resolve('.test-data/portable-'));
   const first = join(root, 'Portable location with spaces');
   const second = join(root, 'Relocated portable app');
-  const extraction = await mkdtemp(join(tmpdir(), 'Grok Studio extraction '));
+  const extraction = await mkdtemp(join(tmpdir(), 'Grok Workbench extraction '));
   const extractionAlias = execFileSync(
     'powershell.exe',
     [

@@ -1,4 +1,4 @@
-# Grok Studio TODO
+# Grok Workbench TODO
 
 Windows local coding workflows come first. The detailed capability/evidence matrix is in [docs/PARITY.md](docs/PARITY.md). Checked items mean the stated scope is implemented and tested; they do not imply full Codex parity.
 
@@ -17,7 +17,7 @@ Windows local coding workflows come first. The detailed capability/evidence matr
 - [x] Publish the initial substantive source/docs to robbyjo/Grok-Studio and verify the remote revision.
 - [x] Safe text editor: edit/save existing workspace files, detect external modifications, preserve unsaved drafts and reject paths outside the workspace or Git metadata.
 - [x] File-oriented Git changes: stage/unstage individual files, inspect their diffs and commit the staged index with a reviewable message; validate paths and handle conflicts/unborn repositories.
-- [x] Keep project branding consistent with Grok Studio while preserving existing desktop data paths.
+- [x] Keep project branding consistent with Grok Workbench while preserving existing desktop data paths.
 - [x] Add Windows CI for build, backend, native UI, packaged GUI and actual portable launch/relocation checks. Hosted-run outcome is recorded separately in VALIDATION.md.
 - [x] Authenticate Grok and run the source and final 0.6.0 packaged GUI disposable-repository acceptance suite: real edit/test/approve/reject/cancel/resume, model/effort switches and a real MCP call. Modes were not advertised by this runtime. See [current validation](docs/VALIDATION.md) and [earlier observed live results](docs/LIVE-RESULTS-2026-10-07.md).
 - [ ] Test portability on a clean Windows machine and cross-machine authentication behavior.
