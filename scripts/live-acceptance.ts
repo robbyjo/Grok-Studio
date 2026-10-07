@@ -48,7 +48,7 @@ async function main() {
       version: 1,
       projects: [{ id: 'live-project', name: 'Live Grok acceptance', path: cwd }],
       settings: {
-        executable: process.env.GROK_STUDIO_LIVE_EXE ? 'bundled' : resolve('.runtime/grok.exe'),
+        executable: process.env.GROK_STUDIO_ENGINE ?? 'embedded',
       },
       threads: [
         {

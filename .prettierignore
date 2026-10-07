@@ -8,3 +8,7 @@ upstream
 test-results
 package-lock.json
 DEPENDENCY-LICENSES.txt
+native/**/target
+native/**/Cargo.lock
+resources/engine/CARGO-LICENSES.txt
+resources/engine/GROK-LICENSE

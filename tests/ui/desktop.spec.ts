@@ -151,7 +151,7 @@ test('native desktop: persisted chat, file/diff panels, terminal, and IPC bounda
       .fill('Native GUI staged commit');
     await page.screenshot({ path: '.test-data/desktop-commit.png' });
     await page.getByRole('button', { name: 'Commit staged index', exact: true }).click();
-    await expect(page.getByRole('status')).toContainText('Committed');
+    await expect(page.locator('.git-notice')).toContainText('Committed');
     expect(git(['show', 'HEAD:hello.txt']).toString()).toBe('Edited from the native GUI\n');
     expect(git(['log', '-1', '--format=%s']).toString().trim()).toBe('Native GUI staged commit');
     expect(await readFile(join(project, 'keep-untracked.txt'), 'utf8')).toBe('Keep this unstaged');

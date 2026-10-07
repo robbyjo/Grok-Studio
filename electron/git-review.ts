@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { existsSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { git, gitInput } from './git-runner';
 import { changes, indexRevision } from './git-actions';
@@ -198,9 +199,11 @@ export class GitReview {
     return { root, repository: match[1] + '/' + match[2] };
   }
   private async gh(cwd: string, args: string[]) {
+    const installed = join(process.env.ProgramFiles ?? 'C:\\Program Files', 'GitHub CLI', 'gh.exe');
+    const executable = process.platform === 'win32' && existsSync(installed) ? installed : 'gh';
     try {
       return (
-        await exec('gh', args, {
+        await exec(executable, args, {
           cwd,
           windowsHide: true,
           shell: false,

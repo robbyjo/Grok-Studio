@@ -109,7 +109,7 @@ test('native search jumps to messages and project removal retains files, drafts 
     await expect(page.locator('.archived-banner')).toContainText('This chat is archived');
     await page.getByRole('button', { name: 'Search chats', exact: true }).click();
     await query.fill('Saved transcript h-chat');
-    await expect(search.getByRole('status')).toHaveText('0 results');
+    await expect(search.getByRole('status')).toContainText('0 results');
     await search.getByLabel('Include removed projects').check();
     await expect(search.locator('.search-hit')).toHaveCount(1);
     await search.locator('.search-hit').click();

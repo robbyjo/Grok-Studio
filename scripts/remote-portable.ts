@@ -98,7 +98,7 @@ async function main() {
         );
       } else {
         await remote(
-          `Move-Item -LiteralPath ${quote(root + '\\' + locations[0])} -Destination ${quote(folder)}`,
+          `$testRoot=[IO.Path]::GetFullPath(${quote(root)}).TrimEnd('\\')+'\\';$from=[IO.Path]::GetFullPath(${quote(root + '\\' + locations[0])});$to=[IO.Path]::GetFullPath(${quote(folder)});if(-not $from.StartsWith($testRoot,[StringComparison]::OrdinalIgnoreCase)-or -not $to.StartsWith($testRoot,[StringComparison]::OrdinalIgnoreCase)){throw 'Move target escapes acceptance workspace'};Move-Item -LiteralPath $from -Destination $to`,
         );
       }
       // Keep this SSH session alive: Windows OpenSSH owns the launched app's job tree.
@@ -173,17 +173,20 @@ async function main() {
       await call('terminal:open', { id: 't' });
       await call('terminal:write', {
         id: 't',
-        data: "Write-Output ('REMOTE_' + (40 + 2)); & grok --version\r",
+        data: "Write-Output ('REMOTE_' + (40 + 2))\r",
       });
       await page.waitForFunction(
         async () => {
           const result = await window.desktop.call('terminal:open', { id: 't' });
-          return result.buffer.includes('REMOTE_42') && result.buffer.includes('grok 1.0.46');
+          return result.buffer.includes('REMOTE_42');
         },
         undefined,
         { timeout: 30000 },
       );
       const state = await call('state');
+      assert.ok(info.executable.endsWith('studio-engine.node'));
+      const fixture = await call('mcp:list', { id: 't' });
+      assert.ok(Array.isArray(fixture));
       if (i === 0) {
         assert.equal(state.threads[0].sessionId, undefined);
         await call('thread:edit', { id: 't', title: 'Persisted on DESKTOP', pinned: true });

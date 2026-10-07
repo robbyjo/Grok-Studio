@@ -7,6 +7,8 @@ import { Agents } from '../electron/agent';
 import { Integrations } from '../electron/integrations';
 import { Store } from '../electron/store';
 import { RpcProcess } from '../electron/rpc';
+import { EmbeddedRpc } from '../electron/embedded-rpc';
+import { embeddedEngine } from '../electron/runtime';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
@@ -82,13 +84,22 @@ test(
     const agents = new Agents(
       store,
       () => {},
-      (path) =>
-        new RpcProcess(resolve('.runtime/grok.exe'), ['agent', '--no-leader', 'stdio'], path, {
+      (path) => {
+        const env = {
           ...process.env,
           GROK_HOME: home,
           XAI_API_KEY: '',
           GROK_DEPLOYMENT_KEY: '',
-        }),
+        };
+        return process.env.GROK_STUDIO_ENGINE === 'cli'
+          ? new RpcProcess(
+              resolve('.runtime/grok.exe'),
+              ['agent', '--no-leader', 'stdio'],
+              path,
+              env,
+            )
+          : new EmbeddedRpc(embeddedEngine(), path, env, 'oauth');
+      },
     );
     const integration = new Integrations(agents, store);
     const results: any[] = [];

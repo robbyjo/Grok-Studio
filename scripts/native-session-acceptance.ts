@@ -2,6 +2,8 @@ import { Agents } from '../electron/agent';
 import { Store } from '../electron/store';
 import { Sessions } from '../electron/sessions';
 import { RpcProcess } from '../electron/rpc';
+import { EmbeddedRpc } from '../electron/embedded-rpc';
+import { embeddedEngine } from '../electron/runtime';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
@@ -51,7 +53,10 @@ async function main() {
   const agents = new Agents(
       store,
       () => {},
-      (path) => new RpcProcess(executable, ['agent', '--no-leader', 'stdio'], path, env),
+      (path) =>
+        process.env.GROK_STUDIO_ENGINE === 'cli'
+          ? new RpcProcess(executable, ['agent', '--no-leader', 'stdio'], path, env)
+          : new EmbeddedRpc(embeddedEngine(), path, env, 'oauth'),
     ),
     sessions = new Sessions(agents, store);
   const report: any = { results: [], repository: cwd, cliSessionId: cliId };

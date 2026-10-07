@@ -1,7 +1,7 @@
 import { setImmediate } from 'node:timers/promises';
 import type { Entry, SearchHit, SearchResults, State } from '../shared/types';
 
-function entryText(entry: Entry): string {
+export function entryText(entry: Entry): string {
   const data =
     entry.type === 'tool'
       ? {

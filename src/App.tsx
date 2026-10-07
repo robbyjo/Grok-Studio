@@ -51,6 +51,13 @@ import GitRepositoryTools from './GitRepositoryTools';
 import ProjectActions from './ProjectActions';
 import FileEditor, { type FileDraft } from './FileEditor';
 import GitChanges from './GitChanges';
+import TaskDashboard, { UsageIndicators } from './TaskDashboard';
+import Organization from './Organization';
+import DesktopPreferences from './DesktopPreferences';
+import AuthenticationSettings from './AuthenticationSettings';
+import MediaStudio, { MediaPreview } from './MediaStudio';
+import { defaultShortcuts, matchesShortcut } from '../shared/shortcuts';
+import { useAccessibleDialogs } from './accessibility';
 const TerminalPanel = lazy(() => import('./Terminal'));
 
 const initial: State = { version: 1, projects: [], threads: [], settings: { executable: 'grok' } };
@@ -143,6 +150,9 @@ function Activity({ entry }: { entry: Thread['entries'][number] }) {
   return (
     <div className={`message ${entry.type}`}>
       <div className="message-label">{entry.type === 'user' ? 'You' : 'Grok'}</div>
+      {entry.data?.attachments?.map((asset: Wire) => (
+        <MediaPreview key={asset.id ?? asset.name} asset={asset} />
+      ))}
       <div className="markdown">
         <Markdown text={entry.text} />
       </div>
@@ -226,19 +236,32 @@ function ConfigControls({
 }
 
 export default function App() {
+  useAccessibleDialogs();
   const [state, setState] = useState<State>(initial);
   const [activeId, setActiveId] = useState<string>();
   const [projectId, setProjectId] = useState<string>();
   const [search, setSearch] = useState(false);
+  const [organize, setOrganize] = useState(false),
+    [tasks, setTasks] = useState(false);
+  const [historyPage, setHistoryPage] = useState<{
+    entries: Thread['entries'];
+    start: number;
+    end: number;
+    total: number;
+    hasOlder: boolean;
+    hasNewer: boolean;
+  }>();
+  const recoveryReady = useRef(false);
   const [searchHit, setSearchHit] = useState<SearchHit>();
   const [projectSettings, setProjectSettings] = useState<string>();
   const [removedProjects, setRemovedProjects] = useState(false);
   const [archived, setArchived] = useState(false);
   const [settings, setSettings] = useState(false);
+  const [mediaOpen, setMediaOpen] = useState(false);
   const [executable, setExecutable] = useState('grok');
   const [error, setError] = useState('');
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [attached, setAttached] = useState<Record<string, { id: string; name: string }[]>>({});
+  const [attached, setAttached] = useState<Record<string, Wire[]>>({});
   const [pending, setPending] = useState<Record<string, boolean>>({});
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [inspector, setInspector] = useState(true);
@@ -285,6 +308,10 @@ export default function App() {
     }
     const unsubscribe = window.desktop.onEvent((event) => {
       if (event.type === 'state') setState(event.state);
+      if (event.type === 'focus-chat') {
+        setHistoryPage(undefined);
+        setActiveId(event.id);
+      }
       if (event.type === 'permission')
         setPermissions((items) => [
           ...items.filter((item) => item.id !== event.permission.id),
@@ -312,8 +339,49 @@ export default function App() {
       .call<Permission[]>('permissions')
       .then(setPermissions)
       .catch(() => {});
+    void window.desktop
+      .call('drafts:get')
+      .then((value) => {
+        setDrafts(value.composer ?? {});
+        setFileDrafts(value.files ?? {});
+        setAttached(value.attachments ?? {});
+        recoveryReady.current = true;
+      })
+      .catch((reason) => setError(String(reason)));
     return unsubscribe;
   }, []);
+  useEffect(() => {
+    if (!recoveryReady.current) return;
+    const timer = setTimeout(() => {
+      void window.desktop
+        .call('drafts:save', {
+          value: {
+            composer: drafts,
+            attachments: attached,
+            files: Object.fromEntries(
+              Object.entries(fileDrafts).filter(([, d]) => d.text !== d.savedText),
+            ),
+          },
+        })
+        .catch((e) => setError(String(e)));
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [drafts, fileDrafts, attached]);
+  useEffect(() => {
+    if (!activeId) return;
+    setHistoryPage(undefined);
+    void window.desktop
+      .call<State>('thread:select', { id: activeId })
+      .then(setState)
+      .catch((e) => setError(String(e)));
+  }, [activeId]);
+  useEffect(() => {
+    if (searchHit?.entryId && searchHit.threadId === activeId)
+      void window.desktop
+        .call('history:page', { id: activeId, entryId: searchHit.entryId })
+        .then(setHistoryPage)
+        .catch((e) => setError(String(e)));
+  }, [searchHit, activeId]);
   async function action(method: string, args: Wire = {}) {
     try {
       return await window.desktop.call(method, args);
@@ -427,20 +495,29 @@ export default function App() {
     entry?.querySelector('details')?.setAttribute('open', '');
     entry?.focus({ preventScroll: true });
     (entry ?? messages.current)?.scrollIntoView({ block: 'center', behavior: 'instant' });
-  }, [activeId, searchHit]);
+  }, [activeId, searchHit, historyPage]);
   useEffect(() => {
     const keyboard = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key === 'n') {
+      const shortcuts = { ...defaultShortcuts, ...state.settings.shortcuts };
+      if (matchesShortcut(event, shortcuts.newChat)) {
         event.preventDefault();
         void newChat();
       }
-      if ((event.ctrlKey || event.metaKey) && event.key === ',') {
+      if (matchesShortcut(event, shortcuts.settings)) {
         event.preventDefault();
         setSettings(true);
       }
-      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f') {
+      if (matchesShortcut(event, shortcuts.search)) {
         event.preventDefault();
         setSearch(true);
+      }
+      if (matchesShortcut(event, shortcuts.terminal)) {
+        event.preventDefault();
+        setTerminal((value) => !value);
+      }
+      if (matchesShortcut(event, shortcuts.tasks)) {
+        event.preventDefault();
+        setTasks(true);
       }
       if (event.key === 'Escape') {
         closeSettings();
@@ -448,13 +525,22 @@ export default function App() {
         setRename(false);
         setSearch(false);
         setProjectSettings(undefined);
+        setTasks(false);
+        setOrganize(false);
       }
     };
     window.addEventListener('keydown', keyboard);
     return () => window.removeEventListener('keydown', keyboard);
-  }, [project?.id, configurationDirty]);
+  }, [project?.id, configurationDirty, state.settings.shortcuts]);
   async function send() {
-    if (busy || (!draft.trim() && !attached[draftKey]?.length)) return;
+    if (busy) {
+      if (thread && draft.trim()) {
+        const result = await action('agent:queue', { id: thread.id, text: draft });
+        if (result) setDrafts((value) => ({ ...value, [draftKey]: '' }));
+      }
+      return;
+    }
+    if (!draft.trim() && !attached[draftKey]?.length) return;
     let target = thread;
     if (!target) {
       if (!project) {
@@ -519,6 +605,13 @@ export default function App() {
           <span>PROJECTS</span>
           <button
             className="icon-button"
+            aria-label="Organize projects and chats"
+            onClick={() => setOrganize(true)}
+          >
+            <MoreHorizontal size={14} />
+          </button>
+          <button
+            className="icon-button"
             aria-label="Add project"
             onClick={() => void addProject()}
           >
@@ -528,6 +621,12 @@ export default function App() {
         <div className="project-list">
           {state.projects
             .filter((item) => !item.hidden)
+            .sort(
+              (a, b) =>
+                Number(b.pinned) - Number(a.pinned) ||
+                (a.group ?? '').localeCompare(b.group ?? '') ||
+                (a.order ?? 0) - (b.order ?? 0),
+            )
             .map((item) => (
               <div className="project-item" key={item.id}>
                 <button
@@ -543,7 +642,11 @@ export default function App() {
                   }}
                 >
                   <Folder size={15} />
-                  <span>{item.name}</span>
+                  <span>
+                    {item.pinned ? '★ ' : ''}
+                    {item.name}
+                    {item.group && <small> · {item.group}</small>}
+                  </span>
                   {project?.id === item.id && <ChevronDown size={13} />}
                 </button>
                 <button
@@ -625,6 +728,18 @@ export default function App() {
               )}
             </button>
           ))}
+          {state.pagination?.hasMore && (
+            <button
+              onClick={async () => {
+                const next = await action('state', {
+                  limit: Math.min(10000, state.pagination!.limit + 100),
+                });
+                if (next) setState(next);
+              }}
+            >
+              Load more chats
+            </button>
+          )}
           {!shown.length && (
             <p className="sidebar-empty">
               {archived ? 'No archived chats.' : 'Your work starts here.'}
@@ -726,6 +841,16 @@ export default function App() {
         </header>
         <div className="workspace-body">
           <section className="conversation">
+            {thread && (
+              <div className="workflow-toolbar">
+                <UsageIndicators thread={thread} />
+                <button onClick={() => setTasks(true)}>Tasks and queue</button>
+                <button onClick={() => void action('history:export', { id: thread.id })}>
+                  Export chat
+                </button>
+              </div>
+            )}
+            {state.recoveryNotice && <p role="status">{state.recoveryNotice}</p>}
             {searchHit && searchHit.threadId === activeId && (
               <div className="search-context" role="status">
                 <span>
@@ -751,6 +876,40 @@ export default function App() {
                   element.scrollHeight - element.scrollTop - element.clientHeight < 100;
               }}
             >
+              {thread && (historyPage ? historyPage.hasOlder : (thread.historyStart ?? 0) > 0) && (
+                <button
+                  onClick={async () => {
+                    const page = await action('history:page', {
+                      id: thread.id,
+                      before: historyPage?.start ?? thread.historyStart,
+                    });
+                    if (page) setHistoryPage(page);
+                  }}
+                >
+                  Older messages
+                </button>
+              )}
+              {historyPage && (
+                <div className="input-row">
+                  <span>
+                    Messages {historyPage.start + 1}–{historyPage.end} of {historyPage.total}
+                  </span>
+                  {historyPage.hasNewer && (
+                    <button
+                      onClick={async () => {
+                        const page = await action('history:page', {
+                          id: thread?.id,
+                          before: Math.min(historyPage.total, historyPage.end + 80),
+                        });
+                        if (page) setHistoryPage(page);
+                      }}
+                    >
+                      Newer messages
+                    </button>
+                  )}
+                  <button onClick={() => setHistoryPage(undefined)}>Latest messages</button>
+                </div>
+              )}
               {!thread?.entries.length && (
                 <div className="welcome">
                   <div className="welcome-symbol">/</div>
@@ -804,13 +963,13 @@ export default function App() {
                 </div>
               )}
               <div className="timeline">
-                {thread?.entries.map((entry) => (
+                {(historyPage?.entries ?? thread?.entries)?.map((entry) => (
                   <div
                     key={entry.id}
                     data-entry-id={entry.id}
                     tabIndex={-1}
                     className={
-                      searchHit?.threadId === thread.id && searchHit.entryId === entry.id
+                      searchHit?.threadId === thread?.id && searchHit?.entryId === entry.id
                         ? 'matched-entry'
                         : ''
                     }
@@ -952,7 +1111,6 @@ export default function App() {
                         : 'Open a project to get started…'
                     }
                     value={draft}
-                    disabled={busy}
                     onChange={(event) =>
                       setDrafts((value) => ({ ...value, [draftKey]: event.target.value }))
                     }
@@ -971,8 +1129,8 @@ export default function App() {
                     <div className="composer-options">
                       <button
                         className="icon-button"
-                        title="Attach text files"
-                        aria-label="Attach text files"
+                        title="Attach files"
+                        aria-label="Attach files"
                         disabled={busy}
                         onClick={async () => {
                           const items = await action('attachments:pick');
@@ -985,6 +1143,11 @@ export default function App() {
                       >
                         <Paperclip size={17} />
                       </button>
+                      {thread && (
+                        <button disabled={busy} onClick={() => setMediaOpen(true)}>
+                          Media
+                        </button>
+                      )}
                       {thread ? (
                         <ConfigControls thread={thread} action={action} />
                       ) : (
@@ -992,14 +1155,31 @@ export default function App() {
                       )}
                     </div>
                     {busy && thread ? (
-                      <button
-                        className="send stop"
-                        aria-label="Stop turn"
-                        title="Stop turn"
-                        onClick={() => void action('agent:cancel', { id: thread.id })}
-                      >
-                        <Square size={14} />
-                      </button>
+                      <>
+                        <button disabled={!draft.trim()} onClick={() => void send()}>
+                          Queue prompt
+                        </button>
+                        <button
+                          disabled={!draft.trim() || thread.status !== 'running'}
+                          onClick={async () => {
+                            const result = await action('agent:steer', {
+                              id: thread.id,
+                              text: draft,
+                            });
+                            if (result) setDrafts((value) => ({ ...value, [draftKey]: '' }));
+                          }}
+                        >
+                          Steer now
+                        </button>
+                        <button
+                          className="send stop"
+                          aria-label="Stop turn"
+                          title="Stop turn"
+                          onClick={() => void action('agent:cancel', { id: thread.id })}
+                        >
+                          <Square size={14} />
+                        </button>
+                      </>
                     ) : (
                       <button
                         className="send"
@@ -1042,7 +1222,18 @@ export default function App() {
                   </button>
                 </div>
                 <Suspense fallback={<div className="muted">Opening terminal…</div>}>
-                  <TerminalPanel key={thread.id} id={thread.id} error={setError} />
+                  <TerminalPanel
+                    key={thread.id}
+                    id={thread.id}
+                    error={setError}
+                    context={(text) => {
+                      setDrafts((value) => ({
+                        ...value,
+                        [draftKey]: (value[draftKey] ?? '') + '\n\n' + text,
+                      }));
+                      composer.current?.focus();
+                    }}
+                  />
                 </Suspense>
               </div>
             )}
@@ -1209,6 +1400,10 @@ export default function App() {
         </div>
       )}
       {search && <ChatSearch close={() => setSearch(false)} select={selectSearchHit} />}
+      {organize && (
+        <Organization state={state} close={() => setOrganize(false)} updated={setState} />
+      )}
+      {tasks && thread && <TaskDashboard thread={thread} close={() => setTasks(false)} />}
       {projectSettings && state.projects.find((item) => item.id === projectSettings) && (
         <ProjectSettings
           key={projectSettings}
@@ -1239,20 +1434,20 @@ export default function App() {
                 <X size={18} />
               </button>
             </div>
-            <h3>Grok Build runtime</h3>
+            <h3>Grok engine</h3>
             <p>
-              The desktop app uses your installed Grok CLI and its existing account, project rules,
-              skills, plugins, and MCP configuration.
+              The built-in engine includes Grok Build’s agent, OAuth/API authentication, project
+              rules, skills, plugins, and MCP support. A separate Grok executable is optional.
             </p>
             <label className="field-label" htmlFor="executable">
-              Executable
+              Engine (embedded is recommended)
             </label>
             <div className="input-row">
               <input
                 id="executable"
                 value={executable}
                 onChange={(event) => setExecutable(event.target.value)}
-                placeholder="bundled, grok or C:\path\to\grok.exe"
+                placeholder="embedded, grok or C:\path\to\grok.exe"
               />
               <button
                 onClick={async () => {
@@ -1264,15 +1459,14 @@ export default function App() {
               </button>
             </div>
             <small>
-              Use “bundled” for the included runtime, “grok” on PATH, or select a Windows
+              Use “embedded” for the built-in engine, “grok” on PATH, or select a Windows
               executable.
             </small>
             <div className="runtime-help">
               <h4>First-time setup</h4>
               <p>
-                The portable release includes Grok Build. Run <code>grok login</code> in the project
-                terminal to sign in to the current Grok profile. Your project still needs its own
-                development tools.
+                Select embedded and save settings, then connect a project chat to sign in. Your
+                project still needs its own development tools.
               </p>
               <button
                 onClick={() =>
@@ -1303,9 +1497,11 @@ export default function App() {
               </p>
             </div>
             <McpSettings thread={thread} />
+            <AuthenticationSettings state={state} thread={thread} />
             <IntegrationSettings thread={thread} />
             <ConfigurationEditor thread={thread} dirtyChanged={setConfigurationDirty} />
             <ProjectActions thread={thread} />
+            <DesktopPreferences state={state} />
             {thread && <GitRepositoryTools key={thread.id} thread={thread} />}
             {thread && (
               <WorktreeTools
@@ -1344,9 +1540,22 @@ export default function App() {
                 </button>
               )}
             </div>
-            <small className="muted">Grok Studio 0.4.0 · Independent client · Windows first</small>
+            <small className="muted">Grok Studio 0.6.0 · Independent client · Windows first</small>
           </section>
         </div>
+      )}
+      {mediaOpen && thread && (
+        <MediaStudio
+          thread={thread}
+          close={() => setMediaOpen(false)}
+          attach={(asset) => {
+            setAttached((value) => ({
+              ...value,
+              [draftKey]: [...(value[draftKey] ?? []), asset].slice(0, 5),
+            }));
+            setMediaOpen(false);
+          }}
+        />
       )}
       {worktree && thread && (
         <div className="modal-backdrop">

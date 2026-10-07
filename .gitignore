@@ -14,3 +14,4 @@ playwright-report/
 Grok Desktop Data/
 Grok Studio Data/
 .grok/
+native/**/target/

@@ -1,6 +1,6 @@
 {
   "name": "grok-studio",
-  "version": "0.4.0",
+  "version": "0.6.0",
   "private": true,
   "description": "Windows-first desktop client for Grok Build",
   "author": "Grok Studio contributors",
@@ -21,9 +21,10 @@
     "test:github-oauth": "tsx scripts/github-oauth-acceptance.ts --run",
     "test:remote": "tsx scripts/remote-portable.ts",
     "runtime": "node scripts/runtime.cjs",
-    "package:portable": "npm run build && npm run runtime && npm run licenses && electron-builder --win portable --x64",
-    "package:win": "npm run build && npm run runtime && npm run licenses && electron-builder --win nsis --x64",
-    "package:dir": "npm run build && npm run runtime && npm run licenses && electron-builder --win --x64 --dir",
+    "engine:build": "node scripts/engine-build.cjs",
+    "package:portable": "npm run build && npm run engine:build && npm run licenses && electron-builder --win portable --x64",
+    "package:win": "npm run build && npm run engine:build && npm run licenses && electron-builder --win nsis --x64",
+    "package:dir": "npm run build && npm run engine:build && npm run licenses && electron-builder --win --x64 --dir",
     "licenses": "node scripts/licenses.cjs",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
@@ -72,14 +73,23 @@
       "node_modules/@lydell/**/*"
     ],
     "npmRebuild": false,
+    "extraFiles": [
+      {
+        "from": ".runtime/msvc",
+        "to": ".",
+        "filter": [
+          "*.dll"
+        ]
+      }
+    ],
     "extraResources": [
       {
-        "from": ".runtime/grok.exe",
-        "to": "runtime/grok.exe"
+        "from": ".runtime/studio-engine.node",
+        "to": "engine/studio-engine.node"
       },
       {
-        "from": "resources/grok",
-        "to": "runtime/notices"
+        "from": "resources/engine",
+        "to": "engine/notices"
       }
     ],
     "win": {
@@ -99,6 +109,6 @@
     "@electron/get": "5.0.0"
   },
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=24.0.0"
   }
 }

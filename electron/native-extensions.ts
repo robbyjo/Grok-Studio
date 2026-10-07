@@ -1,6 +1,8 @@
 import type { Wire } from '../shared/types';
 
 export const nativeMethods = new Set([
+  '_x.ai/auth/info',
+  '_x.ai/privacy/setCodingDataRetention',
   'session/list',
   '_x.ai/session/fork',
   '_x.ai/rewind/points',

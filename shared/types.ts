@@ -5,6 +5,9 @@ export interface Project {
   name: string;
   path: string;
   hidden?: boolean;
+  pinned?: boolean;
+  group?: string;
+  order?: number;
   actions?: ProjectAction[];
 }
 export interface ProjectAction {
@@ -30,6 +33,7 @@ export interface SearchHit {
 export interface SearchResults {
   hits: SearchHit[];
   truncated: boolean;
+  nextOffset?: number;
 }
 export interface Entry {
   id: string;
@@ -52,6 +56,13 @@ export interface Thread {
   entries: Entry[];
   session?: Wire;
   error?: string;
+  entryCount?: number;
+  historyStart?: number;
+  usage?: Wire;
+  runtimeStatus?: Wire;
+  tasks?: Wire[];
+  subagents?: Wire[];
+  queue?: Array<{ id: string; text: string; state: 'queued' | 'paused' }>;
   reviewComments?: Array<{
     id: string;
     path: string;
@@ -64,12 +75,18 @@ export interface Thread {
 }
 export interface Settings {
   executable: string;
+  authMode?: 'auto' | 'oauth' | 'api';
+  storageMiB?: number;
+  notifications?: boolean;
+  shortcuts?: Record<string, string>;
 }
 export interface State {
   version: 1;
   projects: Project[];
   threads: Thread[];
   settings: Settings;
+  pagination?: { limit: number; total: number; hasMore: boolean };
+  recoveryNotice?: string;
   worktrees?: Array<{ id: string; repo: string; path: string; archived: boolean; ref?: string }>;
 }
 export interface Permission {
@@ -80,9 +97,13 @@ export interface Permission {
   kind?: 'trust';
 }
 export interface Attachment {
+  id?: string;
+  url?: string;
   name: string;
   uri: string;
   text: string;
+  mimeType?: string;
+  data?: string;
 }
 export interface FileItem {
   name: string;
@@ -114,7 +135,9 @@ export type DesktopEvent =
   | { type: 'permission'; permission: Permission }
   | { type: 'permission-closed'; id: string }
   | { type: 'terminal'; id: string; data: string; seq: number }
-  | { type: 'terminal-exit'; id: string; code: number };
+  | { type: 'terminal-exit'; id: string; code: number }
+  | { type: 'focus-chat'; id: string }
+  | { type: 'attention'; id: string; kind: 'complete' | 'failure' };
 export interface DesktopAPI {
   call<T = any>(method: string, args?: Wire): Promise<T>;
   onEvent(callback: (event: DesktopEvent) => void): () => void;

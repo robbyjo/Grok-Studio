@@ -177,12 +177,12 @@ export class Sessions {
       index,
       mode,
       files,
-      entries: thread.entries,
+      entries: this.store.fullHistory(id),
     });
     // Preserve conversation and file recovery before the explicitly confirmed native mutation.
     const backup = this.store.create(thread.projectId, thread.cwd);
     backup.title = ('Before rewind: ' + thread.title).slice(0, 120);
-    backup.entries = structuredClone(thread.entries);
+    backup.entries = this.store.fullHistory(id);
     backup.archived = true;
     backup.entries.push({
       id: randomUUID(),

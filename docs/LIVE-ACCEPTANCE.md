@@ -1,6 +1,6 @@
 # Authenticated local workflow acceptance
 
-This is the remaining live acceptance gate, not a record of passed tests. Run it with the Windows portable app and a signed-in Grok account. Automated fixtures already cover client protocol behavior and native MCP connections; this suite checks actual model turns and their effects.
+This is the live acceptance procedure, not a result record. Run it with the Windows portable app and a signed-in Grok account. Automated fixtures cover client protocol behavior and native MCP connections; this suite checks actual model turns and their effects. Passed version-specific results are recorded in [VALIDATION.md](VALIDATION.md).
 
 ## Prepare an isolated project
 
@@ -19,7 +19,7 @@ git -C $taskAcceptance commit -m 'Acceptance baseline'
 $taskAcceptance
 ```
 
-Open this folder in Grok Studio. Use the bundled runtime and sign in through the integrated terminal with `grok login`. Keep the existing permission policy visible; tool approval and folder trust are separate decisions. Record app/runtime versions, the selected model/mode, date and the test repository HEAD. Keep credentials out of evidence files.
+Open this folder in Grok Studio. Use the built-in engine and **Settings → Authentication → Grok account (OAuth) → Connect / sign in with selected method**, then complete browser sign-in. An API key can instead be entered locally in Settings. Keep the existing permission policy visible; tool approval and folder trust are separate decisions. Record app/engine versions, the selected model/mode, date and the test repository HEAD. Keep credentials out of evidence files.
 
 ## Checks and required evidence
 

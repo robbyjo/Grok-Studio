@@ -31,7 +31,9 @@ export default function FileEditor({
       .then((document) => {
         if (!active) return;
         const value = current.current;
-        if (value && value.text !== value.savedText) {
+        if (value?.text === document.text)
+          updateCurrent.current({ ...document, savedText: document.text });
+        else if (value && value.text !== value.savedText) {
           if (value.revision !== document.revision)
             setError('File changed on disk. Your draft was kept; reload before saving.');
         } else updateCurrent.current({ ...document, savedText: document.text });

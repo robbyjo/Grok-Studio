@@ -65,6 +65,11 @@ test('state recovers active chats as interrupted and refuses corrupt data withou
   store.flush();
   assert.equal(new Store(file).thread(thread.id).status, 'interrupted');
   await writeFile(file, '{broken');
-  assert.throws(() => new Store(file), /Cannot read desktop state/);
-  assert.equal(await readFile(file, 'utf8'), '{broken');
+  const recovered = new Store(file);
+  assert.equal(recovered.thread(thread.id).status, 'interrupted');
+  assert.match(recovered.state.recoveryNotice!, /Recovered/);
+  const other = join(folder, 'broken.json');
+  await writeFile(other, '{broken');
+  assert.throws(() => new Store(other), /Cannot read desktop state/);
+  assert.equal(await readFile(other, 'utf8'), '{broken');
 });

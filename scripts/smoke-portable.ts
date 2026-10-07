@@ -40,7 +40,7 @@ async function main() {
     JSON.stringify({
       version: 1,
       projects: [{ id: 'p', name: 'Portable fixture', path: project }],
-      settings: { executable: 'bundled' },
+      settings: { executable: 'embedded' },
       threads: [
         {
           id: 't',
@@ -110,10 +110,10 @@ async function main() {
         createHash('sha256')
           .update(await readFile(info.executable))
           .digest('hex'),
-        'e09c0893cee4850a569bd90e7aed956ea503b34f551637d58187ca4dfb931611',
+        JSON.parse(await readFile('.runtime/engine.json', 'utf8')).sha256,
       );
       const state = await page.evaluate(() => window.desktop.call('state'));
-      assert.equal(state.settings.executable, 'bundled');
+      assert.equal(state.settings.executable, 'embedded');
       if (location === first) {
         await page.evaluate((input) => window.desktop.call('mcp:add', input), {
           id: 't',
@@ -149,20 +149,8 @@ async function main() {
           undefined,
           { timeout: 15000 },
         );
-        await page.evaluate(() =>
-          window.desktop.call('terminal:write', {
-            id: 't',
-            data: "$taskGrokVersion = & grok --version; Write-Output ('BUNDLED_VERSION_' + $taskGrokVersion)\r",
-          }),
-        );
-        await page.waitForFunction(
-          async () =>
-            (await window.desktop.call('terminal:open', { id: 't' })).buffer.includes(
-              'BUNDLED_VERSION_grok 1.0.46',
-            ),
-          undefined,
-          { timeout: 15000 },
-        );
+        const embedded = await page.evaluate(() => window.desktop.call('runtime:info'));
+        assert.ok(embedded.executable.endsWith('studio-engine.node'));
         await page.screenshot({ path: '.test-data/portable-launch.png' });
       } else {
         assert.equal(state.threads[0].title, 'Portable persisted');

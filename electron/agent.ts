@@ -1,14 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
-import { RpcProcess } from './rpc';
+import { fileURLToPath } from 'node:url';
+import { RpcProcess, type RpcClient } from './rpc';
 import { Store } from './store';
-import { runtimeExecutable } from './runtime';
+import { runtimeExecutable, embeddedEngine } from './runtime';
 import type { Attachment, DesktopEvent, Permission, Wire } from '../shared/types';
 import { version } from '../package.json';
 import { nativeMethods, extensionResult, publicAgent } from './native-extensions';
 
 interface Connection {
-  rpc: RpcProcess;
+  rpc: RpcClient;
   initialized?: Wire;
   loading: boolean;
   suppressReplay?: boolean;
@@ -16,30 +17,67 @@ interface Connection {
   cancelTimer?: NodeJS.Timeout;
 }
 export class Agents {
+  canStart = () => true;
+  private draining = new Set<string>();
   private connections = new Map<string, Connection>();
   private connecting = new Map<string, Promise<Wire>>();
   private permissions = new Map<
     string,
-    { permission: Permission; rpc: RpcProcess; rpcId: string | number }
+    { permission: Permission; rpc: RpcClient; rpcId: string | number }
   >();
   constructor(
     private store: Store,
     private emit: (event: DesktopEvent) => void,
-    private launch: (cwd: string) => RpcProcess = (cwd) =>
-      new RpcProcess(
-        runtimeExecutable(store.state.settings.executable),
-        ['agent', '--no-leader', 'stdio'],
-        cwd,
-      ),
+    private launch: (cwd: string) => RpcClient = (cwd) =>
+      store.state.settings.executable === 'embedded'
+        ? new (require('./embedded-rpc').EmbeddedRpc)(
+            embeddedEngine(),
+            cwd,
+            this.environment(),
+            store.state.settings.authMode ?? 'auto',
+          )
+        : new RpcProcess(
+            runtimeExecutable(store.state.settings.executable),
+            ['agent', '--no-leader', 'stdio'],
+            cwd,
+            this.environment(),
+          ),
   ) {}
+  environment = () => process.env;
+  async mcp(id: string, input: Wire) {
+    const rpc = this.connection(id).rpc as RpcClient & { mcp(input: Wire): Promise<any> };
+    if (!rpc.mcp) throw new Error('The built-in MCP manager is unavailable.');
+    return rpc.mcp(input);
+  }
+  async generate(id: string, input: Wire) {
+    await this.connect(id);
+    const rpc = this.connections.get(id)?.rpc as RpcClient & {
+      generate?: (input: Wire) => Promise<Uint8Array>;
+    };
+    if (!rpc.generate) throw new Error('Media generation requires the built-in Studio engine.');
+    return rpc.generate(input);
+  }
 
   private connection(id: string): Connection {
     const existing = this.connections.get(id);
     if (existing) return existing;
+    if (this.connections.size >= 8)
+      throw new Error(
+        'Up to eight Grok connections can run at once. Disconnect an idle chat first.',
+      );
     const thread = this.store.thread(id);
+    thread.usage = undefined;
+    thread.runtimeStatus = undefined;
     const connection: Connection = { rpc: this.launch(thread.cwd), loading: false };
     this.connections.set(id, connection);
     connection.rpc.on('notification', (message: Wire) => {
+      if (
+        ['_x.ai/session_notification', 'x.ai/session_notification'].includes(message.method) &&
+        message.params?.sessionId === thread.sessionId
+      ) {
+        this.store.vendorUpdate(id, message.params.update ?? {});
+        return;
+      }
       if (message.method === 'session/update' && message.params?.sessionId === thread.sessionId) {
         if (!message.params.update) return;
         if (!connection.loading && message.params.update.sessionUpdate !== 'user_message_chunk')
@@ -218,8 +256,14 @@ export class Agents {
       throw error;
     }
   }
-  async prompt(id: string, text: string, attachments: Attachment[]) {
+  async prompt(id: string, text: string, attachments: Attachment[], queuedId?: string) {
+    if (attachments.reduce((total, item) => total + (item.data?.length ?? 0), 0) > 12 * 1024 * 1024)
+      throw new Error('Inline images exceed 12 MiB. Send fewer images in this prompt.');
     const thread = this.store.thread(id);
+    this.store.assertCapacity();
+    if (!this.canStart()) throw new Error('Wait for the workspace or configuration operation.');
+    if (thread.archived || this.store.project(thread.projectId).hidden)
+      throw new Error('Restore this chat and project before sending a prompt.');
     if (['running', 'approval', 'connecting'].includes(thread.status))
       throw new Error('This chat is busy. Stop its turn before sending another prompt.');
     await this.connect(id);
@@ -238,13 +282,41 @@ export class Agents {
           ? `\n\nAttached: ${attachments.map((item) => item.name).join(', ')}`
           : ''),
       turn,
+      data: attachments.length
+        ? {
+            attachments: attachments.map(({ id, name, url, mimeType }) => ({
+              id,
+              name,
+              url,
+              mimeType,
+            })),
+          }
+        : undefined,
     });
     if (thread.title === 'New chat')
       thread.title = text.replace(/\s+/g, ' ').slice(0, 60) || 'Attached files';
+    if (queuedId) thread.queue = thread.queue?.filter((row) => row.id !== queuedId);
+    // Commit delivery and removal from the queue together. A pre-delivery crash leaves it paused.
+    this.store.flush();
     this.store.touch();
     const prompt: Wire[] = [{ type: 'text', text }];
     for (const attachment of attachments) {
-      if (connection.initialized?.agentCapabilities?.promptCapabilities?.embeddedContext)
+      if (attachment.data && attachment.mimeType?.startsWith('image/'))
+        prompt.push({ type: 'image', data: attachment.data, mimeType: attachment.mimeType });
+      else if (attachment.mimeType && attachment.mimeType !== 'text/plain') {
+        // The upstream @mention expander splits paths at spaces; keep binary paths explicit.
+        prompt.push({
+          type: 'resource_link',
+          uri: attachment.uri,
+          name: attachment.name,
+          mimeType: attachment.mimeType,
+          _meta: { source: 'studio-attachment' },
+        });
+        prompt.push({
+          type: 'text',
+          text: `User attachment ${JSON.stringify(attachment.name)} is available at ${JSON.stringify(fileURLToPath(attachment.uri))}. Inspect it with an appropriate tool if needed.`,
+        });
+      } else if (connection.initialized?.agentCapabilities?.promptCapabilities?.embeddedContext)
         prompt.push({
           type: 'resource',
           resource: { uri: attachment.uri, mimeType: 'text/plain', text: attachment.text },
@@ -276,8 +348,172 @@ export class Agents {
       connection.turn = undefined;
       this.clearPermissions(id, true);
       thread.updatedAt = new Date().toISOString();
+      if (thread.status !== 'idle') for (const row of thread.queue ?? []) row.state = 'paused';
       this.store.flush();
+      this.emit({ type: 'attention', id, kind: thread.status === 'idle' ? 'complete' : 'failure' });
+      if (thread.status === 'idle') setImmediate(() => void this.drainQueue(id));
     }
+  }
+  queue(id: string, text: string) {
+    const t = this.store.thread(id);
+    this.store.assertCapacity();
+    if (!text.trim() || text.length > 20000 || text.includes('\0'))
+      throw new Error('Enter up to 20,000 characters for a queued prompt.');
+    if (t.archived || this.store.project(t.projectId).hidden)
+      throw new Error('Restore the chat before queuing.');
+    if (
+      (t.queue?.length ?? 0) >= 20 ||
+      this.store.state.threads.reduce((n, t) => n + (t.queue?.length ?? 0), 0) >= 200
+    )
+      throw new Error('Prompt queue limit reached.');
+    t.queue = [...(t.queue ?? []), { id: randomUUID(), text, state: 'queued' }];
+    this.store.flush();
+    if (t.status === 'idle') setImmediate(() => void this.drainQueue(id));
+    return t.queue;
+  }
+  editQueue(id: string, input: Wire) {
+    const t = this.store.thread(id),
+      rows = t.queue ?? [];
+    if (input.operation === 'resume') {
+      for (const r of rows) r.state = 'queued';
+      this.store.flush();
+      setImmediate(() => void this.drainQueue(id));
+      return;
+    }
+    if (input.operation === 'pause') {
+      for (const r of rows) r.state = 'paused';
+      this.store.flush();
+      return;
+    }
+    const index = rows.findIndex((r) => r.id === input.queueId);
+    if (index < 0) throw new Error('Queued prompt no longer exists.');
+    if (input.operation === 'remove') rows.splice(index, 1);
+    else if (input.operation === 'edit') {
+      if (
+        typeof input.text !== 'string' ||
+        !input.text.trim() ||
+        input.text.length > 20000 ||
+        input.text.includes('\0')
+      )
+        throw new Error('Invalid queued prompt.');
+      rows[index].text = input.text;
+    } else if (input.operation === 'up' && index > 0)
+      [rows[index - 1], rows[index]] = [rows[index], rows[index - 1]];
+    else if (input.operation !== 'up') throw new Error('Unknown queue action.');
+    this.store.flush();
+  }
+  private async drainQueue(id: string) {
+    if (this.draining.has(id)) return;
+    const t = this.store.thread(id),
+      next = t.queue?.[0];
+    if (!next || next.state !== 'queued' || t.status !== 'idle') return;
+    if (!this.canStart()) {
+      for (const r of t.queue ?? []) r.state = 'paused';
+      this.store.flush();
+      return;
+    }
+    this.draining.add(id);
+    next.state = 'paused';
+    this.store.flush();
+    const before = new Set(t.entries.map((entry) => entry.id));
+    try {
+      await this.prompt(id, next.text, [], next.id);
+    } catch {
+      // Restore only prompts rejected before delivery; a failed delivered turn remains in history.
+      const delivered = t.entries.some(
+        (entry) => !before.has(entry.id) && entry.type === 'user' && entry.text === next.text,
+      );
+      if (!delivered && !t.queue!.some((row) => row.id === next.id))
+        t.queue!.unshift({ ...next, state: 'paused' });
+      for (const r of t.queue!) r.state = 'paused';
+      this.store.flush();
+    } finally {
+      this.draining.delete(id);
+      if (t.status === 'idle') setImmediate(() => void this.drainQueue(id));
+    }
+  }
+  async live(id: string, method: string, params: Wire = {}) {
+    const allowed = [
+      '_x.ai/interject',
+      '_x.ai/task/list',
+      '_x.ai/task/kill',
+      '_x.ai/subagent/list_running',
+      '_x.ai/subagent/get',
+      '_x.ai/subagent/cancel',
+      '_x.ai/session/usage',
+    ];
+    if (!allowed.includes(method)) throw new Error('Unsupported live operation.');
+    const t = this.store.thread(id),
+      c = this.connections.get(id);
+    if (!c?.initialized || !t.sessionId || !t.session?.connected)
+      throw new Error('Connect Grok before using live task controls.');
+    return extensionResult(
+      await c.rpc.request(method, { ...params, sessionId: t.sessionId }, 30000),
+    );
+  }
+  async steer(id: string, text: string) {
+    const t = this.store.thread(id);
+    if (t.status !== 'running')
+      throw new Error(
+        'Steering is available while Grok is running. Resolve pending approval first.',
+      );
+    if (!text.trim() || text.length > 20000 || text.includes('\0'))
+      throw new Error('Invalid steering message.');
+    const result = await this.live(id, '_x.ai/interject', { text, interjectionId: randomUUID() });
+    t.entries.push({
+      id: randomUUID(),
+      type: 'user',
+      text: 'Steering: ' + text,
+      turn: this.connections.get(id)?.turn,
+    });
+    this.store.touch();
+    return result;
+  }
+  async dashboard(id: string) {
+    const t = this.store.thread(id),
+      errors: Record<string, string> = {};
+    for (const [kind, method] of [
+      ['tasks', '_x.ai/task/list'],
+      ['subagents', '_x.ai/subagent/list_running'],
+      ['usage', '_x.ai/session/usage'],
+    ]) {
+      try {
+        const response = await this.live(id, method);
+        if (kind === 'usage')
+          t.usage = response.usage ? { ...response.usage, _scope: 'process' } : undefined;
+        else
+          this.store.vendorUpdate(id, {
+            sessionUpdate: kind === 'tasks' ? 'background_tasks' : 'subagents_snapshot',
+            [kind]: response[kind] ?? [],
+          });
+      } catch (error) {
+        errors[kind] = (error as Error).message;
+      }
+    }
+    this.store.touch();
+    return { tasks: t.tasks ?? [], subagents: t.subagents ?? [], usage: t.usage, errors };
+  }
+  async taskControl(id: string, operation: string, target: string) {
+    const t = this.store.thread(id);
+    const report = await this.dashboard(id);
+    if (report.errors[operation === 'kill' ? 'tasks' : 'subagents'])
+      throw new Error('Cannot verify ownership while task inventory is unavailable.');
+    if (operation === 'kill') {
+      if (!t.tasks?.some((r) => (r.task_id ?? r.taskId) === target))
+        throw new Error('Task is not owned by this chat.');
+      return this.live(id, '_x.ai/task/kill', { taskId: target, source: 'clientUi' });
+    }
+    if (!t.subagents?.some((r) => (r.subagent_id ?? r.subagentId) === target))
+      throw new Error('Subagent is not owned by this chat.');
+    if (operation === 'cancel-subagent')
+      return this.live(id, '_x.ai/subagent/cancel', { subagentId: target });
+    if (operation === 'inspect-subagent')
+      return this.live(id, '_x.ai/subagent/get', {
+        subagentId: target,
+        block: false,
+        timeoutMs: 0,
+      });
+    throw new Error('Unknown task action.');
   }
   async config(id: string, configId: string, value: string) {
     const thread = this.store.thread(id);
@@ -358,6 +594,7 @@ export class Agents {
   }
   cancel(id: string) {
     const thread = this.store.thread(id);
+    for (const row of thread.queue ?? []) row.state = 'paused';
     const connection = this.connections.get(id);
     if (!connection) return;
     if (thread.status === 'connecting' || !thread.sessionId) {
@@ -380,12 +617,22 @@ export class Agents {
       connection.rpc.close();
     }
     const thread = this.store.thread(id);
+    for (const row of thread.queue ?? []) row.state = 'paused';
+    for (const task of [...(thread.tasks ?? []), ...(thread.subagents ?? [])])
+      if (task.status === 'running') task.status = 'unknown after disconnect';
     thread.session = { ...thread.session, connected: false };
     thread.status = 'interrupted';
     this.store.touch();
   }
   shutdown() {
     for (const id of this.connections.keys()) this.disconnect(id);
+  }
+  stats() {
+    return {
+      connections: this.connections.size,
+      pendingApprovals: this.permissions.size,
+      draining: this.draining.size,
+    };
   }
   async shutdownAndWait() {
     const processes = [...this.connections.values()].map((connection) => connection.rpc);

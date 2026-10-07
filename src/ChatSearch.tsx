@@ -13,6 +13,7 @@ export default function ChatSearch({
   const [archived, setArchived] = useState(true);
   const [hidden, setHidden] = useState(false);
   const [refresh, setRefresh] = useState(0);
+  const [offset, setOffset] = useState(0);
   const [result, setResult] = useState<SearchResults>({ hits: [], truncated: false });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -27,7 +28,7 @@ export default function ChatSearch({
     const timer = setTimeout(() => {
       if (!query.trim()) return;
       void window.desktop
-        .call<SearchResults>('chats:search', { query, archived, hidden })
+        .call<SearchResults>('chats:search', { query, archived, hidden, offset })
         .then((result) => {
           if (sequence.current === request) setResult(result);
         })
@@ -43,7 +44,7 @@ export default function ChatSearch({
       sequence.current++;
       void window.desktop.call('chats:search-cancel').catch(() => {});
     };
-  }, [query, archived, hidden, refresh]);
+  }, [query, archived, hidden, refresh, offset]);
   return (
     <div className="modal-backdrop" onClick={close}>
       <section
@@ -72,7 +73,10 @@ export default function ChatSearch({
             autoFocus
             maxLength={512}
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setOffset(0);
+            }}
             placeholder="Find a phrase, file name, or tool output…"
           />
         </div>
@@ -81,7 +85,10 @@ export default function ChatSearch({
             <input
               type="checkbox"
               checked={archived}
-              onChange={(event) => setArchived(event.target.checked)}
+              onChange={(event) => {
+                setArchived(event.target.checked);
+                setOffset(0);
+              }}
             />
             Include archived chats
           </label>
@@ -89,7 +96,10 @@ export default function ChatSearch({
             <input
               type="checkbox"
               checked={hidden}
-              onChange={(event) => setHidden(event.target.checked)}
+              onChange={(event) => {
+                setHidden(event.target.checked);
+                setOffset(0);
+              }}
             />
             Include removed projects
           </label>
@@ -105,10 +115,24 @@ export default function ChatSearch({
           {busy
             ? 'Searching…'
             : query.trim()
-              ? `${result.hits.length} ${result.hits.length === 1 ? 'result' : 'results'}${result.truncated ? ' · First 100 shown; narrow your search.' : ''}`
+              ? `${result.hits.length} ${result.hits.length === 1 ? 'result' : 'results'} · Page ${Math.floor(offset / 100) + 1}${result.truncated ? ' · More matches available.' : ''}`
               : 'Enter text to search.'}
         </p>
         {error && <p role="alert">{error}</p>}
+        <div className="input-row">
+          <button
+            disabled={busy || offset === 0}
+            onClick={() => setOffset(Math.max(0, offset - 100))}
+          >
+            Previous search page
+          </button>
+          <button
+            disabled={busy || !result.truncated}
+            onClick={() => setOffset(result.nextOffset ?? offset + 100)}
+          >
+            Next search page
+          </button>
+        </div>
         <div className="search-results">
           {result.hits.map((hit) => (
             <button
