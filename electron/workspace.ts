@@ -1,6 +1,6 @@
 import { readdir, stat, readFile } from 'node:fs/promises';
-import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { directory, inside } from './paths';
+import { basename, isAbsolute, join, relative, sep } from 'node:path';
+import { directory, inside, futurePath } from './paths';
 import { git } from './git-runner';
 import type { FileItem, GitState } from '../shared/types';
 import { changes, indexRevision } from './git-actions';
@@ -60,7 +60,7 @@ export async function createWorktree(root: string, target: string, branch: strin
     throw new Error('Enter a valid new Git branch name.');
   await git(root, ['check-ref-format', '--branch', branch]);
   // Git rejects existing nonempty targets and existing branches. No reset/removal fallback.
-  const destination = resolve(target);
+  const destination = await futurePath(target);
   const repo = await directory(root);
   const rel = relative(repo, destination);
   if (!rel || (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel)))

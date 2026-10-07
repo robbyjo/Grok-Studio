@@ -42,6 +42,10 @@ test('Git status and both diffs include real edits; worktrees preserve dirty ori
   assert.match(state.staged, /\+staged/);
   assert.match(state.status, /untracked.txt/);
   await assert.rejects(createWorktree(root, join(root, 'nested'), 'grok/nested'), /outside/);
+  const alias = join(folder, 'alias');
+  await symlink(root, alias, process.platform === 'win32' ? 'junction' : 'dir');
+  await assert.rejects(createWorktree(root, join(alias, 'nested'), 'grok/aliased'), /outside/);
+  await assert.rejects(createWorktree(alias, join(alias, 'nested'), 'grok/aliased'), /outside/);
   await assert.rejects(createWorktree(root, join(folder, 'bad'), '-force'), /valid/);
   const worktree = await createWorktree(root, join(folder, 'task with spaces'), 'grok/task');
   assert.equal(await readFile(join(worktree.path, 'example.txt'), 'utf8'), 'original\n');
