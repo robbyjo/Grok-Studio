@@ -7,6 +7,8 @@ import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 
 async function main() {
+  const meta = JSON.parse(await readFile('package.json', 'utf8'));
+  const executableName = `Grok-Studio-${meta.version}-Portable.exe`;
   await mkdir('.test-data', { recursive: true });
   const root = await mkdtemp(resolve('.test-data/portable-'));
   const first = join(root, 'Portable location with spaces');
@@ -14,10 +16,7 @@ async function main() {
   const project = join(root, 'project');
   await mkdir(project);
   await mkdir(join(first, 'Grok Desktop Data'), { recursive: true });
-  await copyFile(
-    resolve('release/Grok-Desktop-0.1.1-Portable.exe'),
-    join(first, 'Grok-Desktop-0.1.1-Portable.exe'),
-  );
+  await copyFile(resolve('release', executableName), join(first, executableName));
   const now = new Date().toISOString();
   await writeFile(
     join(first, 'Grok Desktop Data/state.json'),
@@ -52,11 +51,12 @@ async function main() {
     const port = (portServer.address() as import('node:net').AddressInfo).port;
     await new Promise<void>((done) => portServer.close(() => done()));
     let exited = false;
-    child = spawn(
-      join(location, 'Grok-Desktop-0.1.1-Portable.exe'),
-      [`--remote-debugging-port=${port}`],
-      { cwd: location, env, windowsHide: true, stdio: 'ignore' },
-    );
+    child = spawn(join(location, executableName), [`--remote-debugging-port=${port}`], {
+      cwd: location,
+      env,
+      windowsHide: true,
+      stdio: 'ignore',
+    });
     const completed = new Promise<void>((done) =>
       child!.once('exit', () => {
         exited = true;

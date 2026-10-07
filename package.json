@@ -1,9 +1,9 @@
 {
-  "name": "grok-desktop",
-  "version": "0.1.1",
+  "name": "grok-studio",
+  "version": "0.2.0",
   "private": true,
   "description": "Windows-first desktop client for Grok Build",
-  "author": "Grok Desktop contributors",
+  "author": "Grok Studio contributors",
   "license": "Apache-2.0",
   "main": "dist-electron/electron/main.js",
   "scripts": {
@@ -50,7 +50,7 @@
   },
   "build": {
     "appId": "dev.grokdesktop.app",
-    "productName": "Grok Desktop",
+    "productName": "Grok Studio",
     "directories": {
       "output": "release"
     },
@@ -80,7 +80,7 @@
       "target": "portable"
     },
     "portable": {
-      "artifactName": "Grok-Desktop-${version}-Portable.exe"
+      "artifactName": "Grok-Studio-${version}-Portable.exe"
     },
     "nsis": {
       "oneClick": false,
@@ -91,5 +91,8 @@
   "overrides": {
     "shell-quote": "1.12.0",
     "@electron/get": "5.0.0"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }

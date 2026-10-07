@@ -20,6 +20,10 @@ test('portable directory routing and overrides do not depend on extraction path'
     'E:\\Isolated',
   );
   assert.equal(desktopDataDirectory({}), undefined);
+  assert.equal(
+    desktopDataDirectory({}, 'C:/fixture/AppData'),
+    join('C:/fixture/AppData', 'grok-desktop'),
+  );
 });
 test('MCP configuration keeps command arguments literal and validates transport and scope', () => {
   assert.deepEqual(

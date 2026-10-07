@@ -1,22 +1,11 @@
-import { realpath, readdir, stat, readFile } from 'node:fs/promises';
+import { readdir, stat, readFile } from 'node:fs/promises';
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { directory, inside } from './paths';
+import { git } from './git-runner';
 import type { FileItem, GitState } from '../shared/types';
-const execute = promisify(execFile);
-export async function directory(path: string) {
-  const root = await realpath(path);
-  if (!(await stat(root)).isDirectory()) throw new Error('Choose a folder.');
-  return root;
-}
-export async function inside(root: string, path = '.') {
-  const canonicalRoot = await realpath(root);
-  const target = await realpath(resolve(canonicalRoot, path));
-  const rel = relative(canonicalRoot, target);
-  if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel))
-    throw new Error('Path leaves this workspace.');
-  return target;
-}
+import { changes, indexRevision } from './git-actions';
+export { directory, inside } from './paths';
+export { git } from './git-runner';
 export async function files(root: string, path: string): Promise<FileItem[]> {
   const target = await inside(root, path);
   const entries = await readdir(target, { withFileTypes: true });
@@ -41,25 +30,30 @@ export async function textFile(root: string, path: string) {
   if (text.includes('\0')) throw new Error('Binary files cannot be previewed as text.');
   return text;
 }
-export async function git(root: string, args: string[]) {
-  const { stdout } = await execute('git', ['--no-pager', ...args], {
-    cwd: root,
-    windowsHide: true,
-    maxBuffer: 8 * 1024 * 1024,
-    timeout: 30_000,
-    env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
-  });
-  return stdout;
-}
-export async function gitState(root: string): Promise<GitState> {
+export async function gitState(root: string, retry = true): Promise<GitState> {
+  const before = await indexRevision(root);
   const [branch, status, diff, staged, worktrees] = await Promise.all([
     git(root, ['branch', '--show-current']),
-    git(root, ['status', '--short']),
-    git(root, ['diff', '--no-ext-diff', '--no-textconv']),
-    git(root, ['diff', '--cached', '--no-ext-diff', '--no-textconv']),
+    git(root, ['status', '--short', '--', '.']),
+    git(root, ['diff', '--no-ext-diff', '--no-textconv', '--', '.']),
+    git(root, ['diff', '--cached', '--no-ext-diff', '--no-textconv', '--', '.']),
     git(root, ['worktree', 'list']),
   ]);
-  return { branch: branch.trim() || '(detached HEAD)', status, diff, staged, worktrees };
+  const files = await changes(root),
+    after = await indexRevision(root);
+  if (before !== after) {
+    if (retry) return gitState(root, false);
+    throw new Error('Git index changed during refresh; try again.');
+  }
+  return {
+    branch: branch.trim() || '(detached HEAD)',
+    status,
+    diff,
+    staged,
+    worktrees,
+    files,
+    indexRevision: after,
+  };
 }
 export async function createWorktree(root: string, target: string, branch: string) {
   if (!branch || branch.startsWith('-') || !/^[\w./-]+$/.test(branch))

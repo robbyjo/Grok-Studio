@@ -59,6 +59,19 @@ export interface GitState {
   diff: string;
   staged: string;
   worktrees: string;
+  files: GitChange[];
+  indexRevision: string;
+}
+export interface GitChange {
+  path: string;
+  originalPath?: string;
+  index: string;
+  worktree: string;
+  conflicted: boolean;
+}
+export interface TextDocument {
+  text: string;
+  revision: string;
 }
 export type DesktopEvent =
   | { type: 'state'; state: State }

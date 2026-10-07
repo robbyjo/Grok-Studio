@@ -20,7 +20,7 @@ async function main() {
       {
         protocolVersion: 1,
         clientCapabilities: {},
-        clientInfo: { name: 'grok-desktop-smoke', version: '0.1.0' },
+        clientInfo: { name: 'grok-studio-smoke', version: '0.2.0' },
       },
       45_000,
     );

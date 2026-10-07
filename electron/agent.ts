@@ -123,7 +123,7 @@ export class Agents {
         connection.initialized = await connection.rpc.request('initialize', {
           protocolVersion: 1,
           clientCapabilities: { _meta: { 'x.ai/folderTrust': { interactive: true } } },
-          clientInfo: { name: 'grok-desktop', title: 'Grok Desktop', version: '0.1.1' },
+          clientInfo: { name: 'grok-studio', title: 'Grok Studio', version: '0.2.0' },
         });
         if (connection.initialized.protocolVersion !== 1) {
           this.connections.delete(id);

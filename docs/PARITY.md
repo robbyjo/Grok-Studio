@@ -1,6 +1,6 @@
 # Local workflow parity audit
 
-Snapshot: October 7, 2026; Grok Desktop 0.1.1 and official Grok 1.0.46 Windows x64. **Full local workflow parity is not achieved.** Earlier validation covered the foundation, not every local desktop feature. This checklist covers the identified local feature families, including MCP. It is an ongoing acceptance inventory, not a guarantee that a changing Codex product has no additional features.
+Snapshot: October 7, 2026; Grok Studio 0.2.0 and official Grok 1.0.46 Windows x64. **Full local workflow parity is not achieved.** Earlier validation covered the foundation, not every local desktop feature. This checklist covers the identified local feature families, including MCP. It is an ongoing acceptance inventory, not a guarantee that a changing Codex product has no additional features.
 
 The target is comparable Codex desktop workflows where Grok supports them. Harness capability, inherited Grok behavior, visible GUI controls and end-to-end validation are separate claims. No authenticated model turn was run here; fixture tests are labeled. Remote hosts and scheduled automations remain deferred by the user's choice.
 
@@ -45,25 +45,25 @@ The target is comparable Codex desktop workflows where Grok supports them. Harne
 
 ## Files, Git, terminal and distribution
 
-| Workflow                              | Current GUI / evidence                                                | Remaining acceptance work                                                                              |
-| ------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| File browsing/preview                 | Real filesystem + UI; traversal/junction/binary/size rejection tested | Editing with concurrent-change detection, tabs and IDE opening                                         |
-| Diff/status/branch                    | Real staged/unstaged diffs, status and worktrees tested               | Per-file/side-by-side navigation, watch refresh and inline comments                                    |
-| Stage/revert/commit/push/PR           | Terminal/agent tools available; GUI missing                           | Chunk/file actions, commits/branches, push and PR review                                               |
-| Worktree creation                     | Real Git tests preserve dirty original; new chat from HEAD            | Branch/ref selection, working changes, setup scripts and dialog acceptance                             |
-| Worktree attach/handoff/apply/archive | Missing GUI workflows                                                 | Recoverable lifecycle, conflicts, ignored assets and saved chats                                       |
-| Interactive terminal                  | Real PowerShell/ConPTY tested, including packaged native dependency   | Multiple tabs, shell choice, persistent scrollback/reconnect                                           |
-| Agent reading GUI terminal output     | Missing bridge; agent has separate native shell tools                 | Explicitly scoped terminal context and output ordering                                                 |
-| Setup scripts/reusable actions        | Missing                                                               | Project-scoped setup/actions, platform overrides and cancellation                                      |
-| Portable runtime/distribution         | Bundled, hash-pinned Grok; adjacent profile/data routing              | Actual launcher/relocation results in VALIDATION.md; clean-machine QA, signing, updates/version gating |
-| Reliability/diagnostics               | Process/cancel recovery and corrupt-state preservation tested         | Log viewer, crash recovery, bounded storage/history and performance                                    |
-| Mac/Linux/Windows ARM64               | No validated release                                                  | Platform builds, shell/PTY, signing/notarization and security                                          |
+| Workflow                              | Current GUI / evidence                                                                      | Remaining acceptance work                                                                              |
+| ------------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| File browsing/preview                 | UTF-8 edit/save, stale-content rejection, drafts and quit warning; real filesystem/UI tests | Tabs, syntax/search/IDE opening, durable drafts, special ACL and cross-process race acceptance         |
+| Diff/status/branch                    | Per-file staged/unstaged diffs, status and worktrees tested                                 | Side-by-side navigation, watch refresh and inline comments                                             |
+| Stage/revert/commit/push/PR           | File stage/unstage and reviewed commits; real Git and native GUI tests                      | Chunk/revert actions, branch controls, push and PR review; concurrent external Git writers             |
+| Worktree creation                     | Real Git tests preserve dirty original; new chat from HEAD                                  | Branch/ref selection, working changes, setup scripts and dialog acceptance                             |
+| Worktree attach/handoff/apply/archive | Missing GUI workflows                                                                       | Recoverable lifecycle, conflicts, ignored assets and saved chats                                       |
+| Interactive terminal                  | Real PowerShell/ConPTY tested, including packaged native dependency                         | Multiple tabs, shell choice, persistent scrollback/reconnect                                           |
+| Agent reading GUI terminal output     | Missing bridge; agent has separate native shell tools                                       | Explicitly scoped terminal context and output ordering                                                 |
+| Setup scripts/reusable actions        | Missing                                                                                     | Project-scoped setup/actions, platform overrides and cancellation                                      |
+| Portable runtime/distribution         | Bundled, hash-pinned Grok; adjacent profile/data routing                                    | Actual launcher/relocation results in VALIDATION.md; clean-machine QA, signing, updates/version gating |
+| Reliability/diagnostics               | Process/cancel recovery and corrupt-state preservation tested                               | Log viewer, crash recovery, bounded storage/history and performance                                    |
+| Mac/Linux/Windows ARM64               | No validated release                                                                        | Platform builds, shell/PTY, signing/notarization and security                                          |
 
 ## Acceptance gates and next priorities
 
-1. Validate the actual portable launcher, bundled runtime and native terminal. Move executable plus companion data and verify chats/MCP profile. Test a clean Windows machine without development dependencies.
+1. Actual portable launch/relocation, embedded runtime, terminal and profile checks pass locally. Test a clean Windows machine without development dependencies and cross-machine authentication.
 2. Run authenticated acceptance in a disposable repository: read/edit/test, approve/reject shell, cancel, restart/resume, change model/mode, and discover/call a known MCP tool. Connection diagnostics alone do not satisfy this gate.
-3. Complete daily GUI gaps: MCP OAuth/advanced policies/catalogs, skill/plugin management, file editor, Git actions/comments, CLI session import/fork and environment actions.
+3. Complete daily GUI gaps: MCP OAuth/advanced policies/catalogs, skill/plugin management, richer editor, Git chunks/push/comments, CLI session import/fork and environment actions.
 4. Complete worktree lifecycle, task dashboards, steering/queue, context/usage and notifications. Validate signing/update/recovery/performance before a stable release. Add Mac/Linux afterward.
 
 ## Architecture and source basis
@@ -71,6 +71,8 @@ The target is comparable Codex desktop workflows where Grok supports them. Harne
 Electron main owns native dialogs, file/Git operations and PTYs. The renderer uses an isolated, sandboxed preload with allowlisted IPC. ACP covers sessions, prompts, updates, modes/config and permissions; Grok executes its own native tools. Only the implemented folder-trust extension is advertised. Credentials remain Grok-owned; portable launches select their profile with GROK_HOME and never copy personal credentials.
 
 MCP management uses separate argv elements with no shell and shares native config/policy. Inventory omits configured env/header values and they are not stored in desktop state. Changes reject active turns, block new turns during writes and disconnect idle chat processes so reconnection loads changes. Doctor exit code 1 with a health report is shown as a failing diagnostic.
+
+The editor uses same-directory temporary replacement and content-hash checks; it does not acquire an OS lock against external writers. Drafts are memory-only. Git actions use literal paths and an index hash for stale-review rejection. Native Git hooks can run and may change the index; external commands can race a GUI operation. Active agent turns block GUI saves/staging/commits, and canceled quit preserves existing sessions.
 
 Primary sources checked for this audit:
 

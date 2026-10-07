@@ -1,5 +1,5 @@
 import { test, expect, _electron as electron, type ElectronApplication } from '@playwright/test';
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile, readFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 const root = resolve('.test-data');
@@ -65,7 +65,96 @@ test('native desktop: persisted chat, file/diff panels, terminal, and IPC bounda
     await page.screenshot({ path: '.test-data/desktop-welcome.png' });
     await page.getByRole('button', { name: 'Files', exact: true }).click();
     await page.getByRole('button', { name: 'hello.txt' }).click();
-    await expect(page.locator('.file-preview')).toContainText('Changed in the real filesystem');
+    const editor = page.getByRole('textbox', { name: 'Edit hello.txt', exact: true });
+    await expect(editor).toHaveValue('Changed in the real filesystem\n');
+    await editor.fill('Unsaved GUI draft\n');
+    await page.getByRole('button', { name: 'Back to files', exact: true }).click();
+    await page.getByRole('button', { name: 'hello.txt', exact: true }).click();
+    await expect(editor).toHaveValue('Unsaved GUI draft\n');
+    await page.evaluate(async () => {
+      await window.desktop.call('terminal:open', { id: 't' });
+      await window.desktop.call('terminal:write', { id: 't', data: '$taskSurvivedQuit = 42\r' });
+    });
+    // Stub only the native confirmation response to exercise the real close guard.
+    await app.evaluate(({ dialog }) => {
+      (globalThis as any).taskOriginalDialog = dialog.showMessageBox;
+      (globalThis as any).taskDialogCount = 0;
+      dialog.showMessageBox = (() => {
+        (globalThis as any).taskDialogCount++;
+        return new Promise((done) => {
+          (globalThis as any).taskAnswerDialog = done;
+        });
+      }) as any;
+    });
+    await app.evaluate(({ app }) => app.quit());
+    await expect.poll(() => app!.evaluate(() => (globalThis as any).taskDialogCount)).toBe(1);
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+    expect(await app.evaluate(() => (globalThis as any).taskDialogCount)).toBe(1);
+    await app.evaluate(({ dialog }) => {
+      (globalThis as any).taskAnswerDialog({ response: 0 });
+      dialog.showMessageBox = (globalThis as any).taskOriginalDialog;
+    });
+    await page.evaluate(() =>
+      window.desktop.call('terminal:write', {
+        id: 't',
+        data: "Write-Output ('QUIT_CANCELED_' + $taskSurvivedQuit)\r",
+      }),
+    );
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            async () => (await window.desktop.call('terminal:open', { id: 't' })).buffer,
+          ),
+        { timeout: 15000 },
+      )
+      .toContain('QUIT_CANCELED_42');
+    await page.getByRole('button', { name: 'Save file', exact: true }).click();
+    await expect
+      .poll(() => readFile(join(project, 'hello.txt'), 'utf8'))
+      .toBe('Unsaved GUI draft\n');
+    await writeFile(join(project, 'hello.txt'), 'External process edit\n');
+    await editor.fill('Draft must survive conflict\n');
+    await page.getByRole('button', { name: 'Save file', exact: true }).click();
+    await expect(page.getByRole('alert')).toContainText('File changed on disk');
+    await expect(editor).toHaveValue('Draft must survive conflict\n');
+    expect(await readFile(join(project, 'hello.txt'), 'utf8')).toBe('External process edit\n');
+    await page.getByRole('button', { name: 'Reload file', exact: true }).click();
+    await page.getByRole('button', { name: 'Discard draft and reload', exact: true }).click();
+    await expect(editor).toHaveValue('External process edit\n');
+    await editor.fill('Edited from the native GUI\n');
+    await editor.press('Control+s');
+    await expect
+      .poll(() => readFile(join(project, 'hello.txt'), 'utf8'))
+      .toBe('Edited from the native GUI\n');
+    await page.screenshot({ path: '.test-data/desktop-editor.png' });
+    await writeFile(join(project, 'keep-untracked.txt'), 'Keep this unstaged');
+    await page.getByRole('button', { name: /^Changes/ }).click();
+    await expect(
+      page.getByRole('button', { name: 'Inspect hello.txt', exact: true }),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Inspect hello.txt', exact: true }).click();
+    await expect(page.locator('.diff-view').first()).toContainText('+Edited from the native GUI');
+    await page.getByRole('button', { name: 'Stage hello.txt', exact: true }).click();
+    await expect(
+      page.getByRole('button', { name: 'Unstage hello.txt', exact: true }),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Unstage hello.txt', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Stage hello.txt', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Stage hello.txt', exact: true }).click();
+    await expect(
+      page.getByRole('button', { name: 'Unstage hello.txt', exact: true }),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Review staged commit', exact: true }).click();
+    await page
+      .getByRole('textbox', { name: 'Commit message', exact: true })
+      .fill('Native GUI staged commit');
+    await page.screenshot({ path: '.test-data/desktop-commit.png' });
+    await page.getByRole('button', { name: 'Commit staged index', exact: true }).click();
+    await expect(page.getByRole('status')).toContainText('Committed');
+    expect(git(['show', 'HEAD:hello.txt']).toString()).toBe('Edited from the native GUI\n');
+    expect(git(['log', '-1', '--format=%s']).toString().trim()).toBe('Native GUI staged commit');
+    expect(await readFile(join(project, 'keep-untracked.txt'), 'utf8')).toBe('Keep this unstaged');
     await page.getByRole('button', { name: 'Pin chat', exact: true }).click();
     await expect
       .poll(async () =>

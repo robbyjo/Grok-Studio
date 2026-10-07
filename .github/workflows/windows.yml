@@ -1,0 +1,89 @@
+name: Windows portable
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: [README.md, TODO.md, 'docs/**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      XAI_API_KEY: ''
+      GROK_DEPLOYMENT_KEY: ''
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: |
+          npm ci
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node node_modules/electron/install.js
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          icacls node_modules/electron/dist /grant '*S-1-15-2-1:(OI)(CI)(RX)' /T /Q
+      - name: Verify pinned Grok runtime
+        run: npm run runtime
+      - name: Formatting
+        run: npm run format:check
+      - name: Build and typecheck
+        run: npm run build
+      - name: Backend and native MCP acceptance
+        run: npm test
+      - name: Native desktop acceptance
+        run: npm run test:ui
+      - name: Build portable executable
+        run: npm run package:portable
+      - name: Packaged desktop acceptance
+        run: |
+          icacls release/win-unpacked /grant '*S-1-15-2-1:(OI)(CI)(RX)' /T /Q
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $env:GROK_DESKTOP_TEST_EXE = Join-Path $PWD 'release/win-unpacked/Grok Studio.exe'
+          npm run test:ui
+      - name: Actual portable launch and relocation
+        run: npm run test:portable
+      - name: Record executable hash
+        run: |
+          Get-ChildItem -LiteralPath release -Filter 'Grok-Studio-*-Portable.exe' | ForEach-Object {
+            $taskHash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            Set-Content -LiteralPath ($_.FullName + '.sha256') -Value ($taskHash + '  ' + $_.Name) -Encoding ascii
+          }
+      - name: Upload tested portable
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: Grok-Studio-Windows-x64-${{ github.sha }}
+          path: |
+            release/Grok-Studio-*-Portable.exe
+            release/Grok-Studio-*-Portable.exe.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+      - name: Upload test screenshots and failure traces
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: Windows-validation-${{ github.sha }}
+          path: |
+            .test-data/*.png
+            test-results/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7

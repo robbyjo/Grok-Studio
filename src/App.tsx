@@ -32,6 +32,8 @@ import {
 } from 'lucide-react';
 import type { FileItem, GitState, Permission, State, Thread, Wire } from '../shared/types';
 import McpSettings from './McpSettings';
+import FileEditor, { type FileDraft } from './FileEditor';
+import GitChanges from './GitChanges';
 const TerminalPanel = lazy(() => import('./Terminal'));
 
 const initial: State = { version: 1, projects: [], threads: [], settings: { executable: 'grok' } };
@@ -223,10 +225,10 @@ export default function App() {
   const [tab, setTab] = useState<'files' | 'changes'>('changes');
   const [filePath, setFilePath] = useState('.');
   const [fileItems, setFileItems] = useState<FileItem[]>([]);
-  const [preview, setPreview] = useState<{ name: string; text: string }>();
+  const [preview, setPreview] = useState<{ name: string; path: string }>();
+  const [fileDrafts, setFileDrafts] = useState<Record<string, FileDraft>>({});
   const [git, setGit] = useState<GitState>();
   const [panelError, setPanelError] = useState('');
-  const [diffTab, setDiffTab] = useState<'diff' | 'staged'>('diff');
   const [terminal, setTerminal] = useState(false);
   const [worktree, setWorktree] = useState(false);
   const [branch, setBranch] = useState('');
@@ -344,6 +346,13 @@ export default function App() {
     void refresh();
   }, [activeId, tab, filePath]);
   useEffect(() => {
+    void window.desktop
+      ?.call('editor:dirty', {
+        count: Object.values(fileDrafts).filter((draft) => draft.text !== draft.savedText).length,
+      })
+      .catch((reason) => setError(String(reason)));
+  }, [fileDrafts]);
+  useEffect(() => {
     if (stick.current) end.current?.scrollIntoView({ behavior: 'instant' });
   }, [thread?.entries, thread?.status]);
   useEffect(() => {
@@ -414,7 +423,7 @@ export default function App() {
         <div className="brand">
           <div className="brand-mark">/</div>
           <span>
-            Grok <b>Desktop</b>
+            Grok <b>Studio</b>
           </span>
           <span className="version">α</span>
         </div>
@@ -951,60 +960,13 @@ export default function App() {
                         </button>
                       </div>
                       {git && (
-                        <>
-                          <pre className="git-status">{git.status || 'Working tree clean'}</pre>
-                          <div className="diff-tabs">
-                            <button
-                              className={diffTab === 'diff' ? 'selected' : ''}
-                              onClick={() => setDiffTab('diff')}
-                            >
-                              Unstaged
-                            </button>
-                            <button
-                              className={diffTab === 'staged' ? 'selected' : ''}
-                              onClick={() => setDiffTab('staged')}
-                            >
-                              Staged
-                            </button>
-                          </div>
-                          <div className="diff-view">
-                            {git[diffTab] ? (
-                              git[diffTab].split('\n').map((line, index) => (
-                                <div
-                                  key={index}
-                                  className={
-                                    line.startsWith('+')
-                                      ? 'addition'
-                                      : line.startsWith('-')
-                                        ? 'deletion'
-                                        : line.startsWith('@@')
-                                          ? 'hunk'
-                                          : line.startsWith('diff ')
-                                            ? 'diff-file'
-                                            : ''
-                                  }
-                                >
-                                  {line || ' '}
-                                </div>
-                              ))
-                            ) : (
-                              <div className="clean-state">
-                                <Check size={22} />
-                                <p>
-                                  No {diffTab === 'staged' ? 'staged' : 'tracked unstaged'} changes
-                                </p>
-                                <small>Untracked files appear in status above.</small>
-                              </div>
-                            )}
-                          </div>
-                          <details className="worktree-list">
-                            <summary>
-                              <GitBranch size={13} />
-                              Worktrees
-                            </summary>
-                            <pre>{git.worktrees}</pre>
-                          </details>
-                        </>
+                        <GitChanges
+                          key={thread.id}
+                          id={thread.id}
+                          git={git}
+                          busy={busy}
+                          refresh={refresh}
+                        />
                       )}
                     </>
                   )}
@@ -1020,9 +982,21 @@ export default function App() {
                             <ChevronRight className="back" size={15} />
                           </button>
                           <span>{preview.name}</span>
-                          <small>Read only</small>
+                          <small>Text editor</small>
                         </div>
-                        <pre className="file-preview">{preview.text}</pre>
+                        <FileEditor
+                          key={`${thread.cwd}:${preview.path}`}
+                          id={thread.id}
+                          path={preview.path}
+                          draft={fileDrafts[`${thread.cwd}\0${preview.path}`]}
+                          update={(draft) =>
+                            setFileDrafts((items) => ({
+                              ...items,
+                              [`${thread.cwd}\0${preview.path}`]: draft,
+                            }))
+                          }
+                          busy={busy}
+                        />
                       </>
                     ) : (
                       <>
@@ -1047,11 +1021,7 @@ export default function App() {
                               onClick={async () => {
                                 if (item.directory) setFilePath(item.path);
                                 else {
-                                  const text = await action('files:read', {
-                                    id: thread.id,
-                                    path: item.path,
-                                  });
-                                  if (text !== undefined) setPreview({ name: item.name, text });
+                                  setPreview({ name: item.name, path: item.path });
                                 }
                               }}
                             >
@@ -1186,7 +1156,7 @@ export default function App() {
                 </button>
               )}
             </div>
-            <small className="muted">Grok Desktop 0.1.1 · Independent client · Windows first</small>
+            <small className="muted">Grok Studio 0.2.0 · Independent client · Windows first</small>
           </section>
         </div>
       )}

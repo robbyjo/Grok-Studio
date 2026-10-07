@@ -14,11 +14,11 @@ Windows local coding workflows come first. The detailed capability/evidence matr
 
 ## Current priorities
 
-- [ ] Publish the initial substantive source/docs to robbyjo/Grok-Studio and verify the remote revision.
-- [ ] Safe text editor: edit/save existing workspace files, detect external modifications, preserve unsaved drafts and reject paths outside the workspace or Git metadata.
-- [ ] File-oriented Git changes: stage/unstage individual files, inspect their diffs and commit the staged index with a reviewable message; validate paths and handle conflicts/unborn repositories.
-- [ ] Keep project branding consistent with Grok Studio while preserving existing desktop data paths.
-- [ ] Add Windows CI for build, backend, native UI and portable packaging checks.
+- [x] Publish the initial substantive source/docs to robbyjo/Grok-Studio and verify the remote revision.
+- [x] Safe text editor: edit/save existing workspace files, detect external modifications, preserve unsaved drafts and reject paths outside the workspace or Git metadata.
+- [x] File-oriented Git changes: stage/unstage individual files, inspect their diffs and commit the staged index with a reviewable message; validate paths and handle conflicts/unborn repositories.
+- [x] Keep project branding consistent with Grok Studio while preserving existing desktop data paths.
+- [x] Add Windows CI for build, backend, native UI, packaged GUI and actual portable launch/relocation checks. Hosted-run outcome is recorded separately in VALIDATION.md.
 - [ ] Authenticate Grok and run a disposable-repository acceptance suite: real edit/test/approve/reject/cancel/resume, model/mode switches and a real MCP tool call. This requires account authentication; fixtures do not complete this gate.
 - [ ] Test portability on a clean Windows machine and cross-machine authentication behavior.
 

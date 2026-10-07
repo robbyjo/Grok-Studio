@@ -8,6 +8,8 @@ import { Store } from './store';
 import { Agents } from './agent';
 import { Terminals } from './terminals';
 import { Mcp } from './mcp';
+import { openDocument, saveDocument } from './editor';
+import { changeIndex, commitIndex, fileDiff } from './git-actions';
 import { bundledRuntime, desktopDataDirectory, runtimeExecutable } from './runtime';
 import { createWorktree, directory, files, gitState, textFile } from './workspace';
 import type { Attachment, DesktopEvent, Wire } from '../shared/types';
@@ -20,6 +22,10 @@ let agents: Agents;
 let terminals: Terminals;
 let mcp: Mcp;
 let mcpMutation = false;
+let workspaceMutation = false;
+let dirtyDocuments = 0;
+let closing = false;
+let closePrompt = false;
 const attachments = new Map<string, Attachment>();
 function emit(event: DesktopEvent) {
   if (window && !window.isDestroyed()) window.webContents.send('desktop:event', event);
@@ -49,7 +55,34 @@ async function dispatch(method: string, args: Wire) {
     ].includes(method)
   )
     throw new Error('Wait for the MCP configuration change to finish.');
+  if (
+    workspaceMutation &&
+    [
+      'agent:connect',
+      'agent:prompt',
+      'agent:authenticate',
+      'settings:save',
+      'git:update',
+      'git:commit',
+      'files:save',
+    ].includes(method)
+  )
+    throw new Error('Wait for the workspace change to finish.');
   const thread = () => store.thread(string(args.id, 'chat ID', 100));
+  const mutate = async (operation: () => Promise<unknown>) => {
+    if (
+      store.state.threads.some((item) =>
+        ['running', 'approval', 'connecting'].includes(item.status),
+      )
+    )
+      throw new Error('Stop active agent turns before editing files or changing Git state.');
+    workspaceMutation = true;
+    try {
+      return await operation();
+    } finally {
+      workspaceMutation = false;
+    }
+  };
   switch (method) {
     case 'state':
       return store.state;
@@ -186,8 +219,43 @@ async function dispatch(method: string, args: Wire) {
       return files(thread().cwd, string(args.path ?? '.', 'path'));
     case 'files:read':
       return textFile(thread().cwd, string(args.path, 'path'));
+    case 'files:open':
+      return openDocument(thread().cwd, string(args.path, 'path'));
+    case 'files:save':
+      return mutate(() =>
+        saveDocument(
+          thread().cwd,
+          string(args.path, 'path'),
+          string(args.text, 'file text', 1024 * 1024),
+          string(args.revision, 'file revision', 64),
+        ),
+      );
+    case 'editor:dirty':
+      if (!Number.isInteger(args.count) || args.count < 0 || args.count > 10000)
+        throw new Error('Invalid draft count.');
+      dirtyDocuments = args.count;
+      return;
     case 'git:state':
       return gitState(thread().cwd);
+    case 'git:diff':
+      return fileDiff(thread().cwd, string(args.path, 'path'), args.staged === true);
+    case 'git:update':
+      return mutate(() =>
+        changeIndex(
+          thread().cwd,
+          string(args.operation, 'Git action', 20),
+          string(args.path, 'path'),
+          string(args.revision, 'index revision', 64),
+        ),
+      );
+    case 'git:commit':
+      return mutate(() =>
+        commitIndex(
+          thread().cwd,
+          string(args.message, 'commit message'),
+          string(args.revision, 'index revision', 64),
+        ),
+      );
     case 'git:worktree': {
       const item = thread();
       const result = await dialog.showSaveDialog(window, {
@@ -256,7 +324,7 @@ function createWindow() {
     minWidth: 960,
     minHeight: 640,
     backgroundColor: '#101214',
-    title: 'Grok Desktop',
+    title: 'Grok Studio',
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
@@ -273,6 +341,39 @@ function createWindow() {
     callback(false),
   );
   window.webContents.session.setPermissionCheckHandler(() => false);
+  window.on('close', (event) => {
+    if (closing) return;
+    if (closePrompt) {
+      event.preventDefault();
+      return;
+    }
+    if (workspaceMutation) {
+      event.preventDefault();
+      void dialog.showMessageBox(window, {
+        type: 'info',
+        message: 'Wait for the file or Git operation to finish before quitting.',
+      });
+    } else if (dirtyDocuments) {
+      event.preventDefault();
+      closePrompt = true;
+      void dialog
+        .showMessageBox(window, {
+          type: 'warning',
+          message: `You have ${dirtyDocuments} unsaved file draft(s).`,
+          detail: 'Drafts are retained while this app is open. Discard them and quit?',
+          buttons: ['Keep editing', 'Discard drafts and quit'],
+          defaultId: 0,
+          cancelId: 0,
+        })
+        .then(({ response }) => {
+          closePrompt = false;
+          if (response === 1) {
+            closing = true;
+            app.quit();
+          }
+        });
+    }
+  });
   window.on('closed', () => {
     agents.shutdown();
     terminals.shutdown();
@@ -282,7 +383,8 @@ function createWindow() {
   if (isDev) void window.loadURL('http://127.0.0.1:5173/');
   else void window.loadFile(rendererFile);
 }
-const dataDirectory = desktopDataDirectory(process.env);
+// Preserve profiles from the original name, including nonportable launches.
+const dataDirectory = desktopDataDirectory(process.env, app.getPath('appData'));
 if (dataDirectory) {
   mkdirSync(dataDirectory, { recursive: true });
   app.setPath('userData', dataDirectory);
@@ -311,7 +413,7 @@ else {
         existsSync(bundledRuntime()) ? 'bundled' : 'grok',
       );
     } catch (error) {
-      dialog.showErrorBox('Cannot load Grok Desktop', (error as Error).message);
+      dialog.showErrorBox('Cannot load Grok Studio', (error as Error).message);
       app.quit();
       return;
     }
@@ -334,7 +436,8 @@ else {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0 && store) createWindow();
   });
-  app.on('before-quit', () => {
+  // A canceled unsaved-draft close must leave live sessions and terminals running.
+  app.on('will-quit', () => {
     agents?.shutdown();
     terminals?.shutdown();
     mcp?.shutdown();

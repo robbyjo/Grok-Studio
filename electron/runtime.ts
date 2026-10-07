@@ -1,12 +1,14 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-export function desktopDataDirectory(env: NodeJS.ProcessEnv): string | undefined {
+export function desktopDataDirectory(env: NodeJS.ProcessEnv, appData?: string): string | undefined {
   return (
     env.GROK_DESKTOP_DATA_DIR ||
     (env.PORTABLE_EXECUTABLE_DIR
       ? join(env.PORTABLE_EXECUTABLE_DIR, 'Grok Desktop Data')
-      : undefined)
+      : appData
+        ? join(appData, 'grok-desktop')
+        : undefined)
   );
 }
 
