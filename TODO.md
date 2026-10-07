@@ -36,7 +36,9 @@ Windows local coding workflows come first. The detailed capability/evidence matr
 - [ ] CLI session import, fork and checkpoint/rewind.
 - [ ] Worktree branch selection, attach/handoff/apply and recoverable archive.
 - [ ] Git chunk actions, inline review comments, branch/push and pull request integration.
-- [ ] Full transcript search, project rename/remove, pins/groups and large-history limits.
+- [x] Literal phrase search across saved transcripts and chat metadata, archived/removed scope controls, matching-message navigation and bounded/cancellable results.
+- [x] Project rename, reversible sidebar removal and restore/reopen, preserving chats, files, worktrees and in-memory drafts; refuse removal during active turns.
+- [ ] Project pins/groups, bulk organization, indexed search/pagination, bounded history storage and sustained large-history acceptance.
 - [ ] Steering, queued prompts, background/subagent dashboard and task controls.
 - [ ] Multiple terminal tabs, shell selection, persistent scrollback and explicit agent terminal context.
 - [ ] Usage/context/cost indicators, notifications, configurable shortcuts and accessibility.

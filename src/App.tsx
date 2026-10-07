@@ -30,7 +30,18 @@ import {
   TerminalSquare,
   X,
 } from 'lucide-react';
-import type { FileItem, GitState, Permission, State, Thread, Wire } from '../shared/types';
+import type {
+  FileItem,
+  GitState,
+  Permission,
+  Project,
+  SearchHit,
+  State,
+  Thread,
+  Wire,
+} from '../shared/types';
+import ChatSearch from './ChatSearch';
+import ProjectSettings from './ProjectSettings';
 import McpSettings from './McpSettings';
 import FileEditor, { type FileDraft } from './FileEditor';
 import GitChanges from './GitChanges';
@@ -212,7 +223,10 @@ export default function App() {
   const [state, setState] = useState<State>(initial);
   const [activeId, setActiveId] = useState<string>();
   const [projectId, setProjectId] = useState<string>();
-  const [filter, setFilter] = useState('');
+  const [search, setSearch] = useState(false);
+  const [searchHit, setSearchHit] = useState<SearchHit>();
+  const [projectSettings, setProjectSettings] = useState<string>();
+  const [removedProjects, setRemovedProjects] = useState(false);
   const [archived, setArchived] = useState(false);
   const [settings, setSettings] = useState(false);
   const [executable, setExecutable] = useState('grok');
@@ -243,7 +257,7 @@ export default function App() {
   const thread = state.threads.find((item) => item.id === activeId);
   const project =
     state.projects.find((item) => item.id === (thread?.projectId ?? projectId)) ??
-    state.projects[0];
+    state.projects.find((item) => !item.hidden);
   const draftKey = thread?.id ?? 'new';
   const draft = drafts[draftKey] ?? '';
   const busy = running(thread) || Boolean(thread && pending[thread.id]);
@@ -271,8 +285,14 @@ export default function App() {
       .then((saved) => {
         setState(saved);
         setExecutable(saved.settings.executable);
-        setActiveId(saved.threads.find((item) => !item.archived)?.id);
-        setProjectId(saved.projects[0]?.id);
+        setActiveId(
+          saved.threads.find(
+            (item) =>
+              !item.archived &&
+              !saved.projects.find((project) => project.id === item.projectId)?.hidden,
+          )?.id,
+        );
+        setProjectId(saved.projects.find((item) => !item.hidden)?.id);
       })
       .catch((reason) => setError(String(reason)));
     void window.desktop
@@ -290,12 +310,14 @@ export default function App() {
     }
   }
   async function newChat() {
+    if (project?.hidden) return;
     if (!project) {
       await addProject();
       return;
     }
     const result = await action('thread:new', { projectId: project.id });
     if (result) {
+      setSearchHit(undefined);
       setActiveId(result.id);
       setArchived(false);
       setPreview(undefined);
@@ -305,10 +327,34 @@ export default function App() {
   async function addProject() {
     const result = await action('project:add');
     if (result) {
+      setSearchHit(undefined);
       setProjectId(result.id);
-      const chat = await action('thread:new', { projectId: result.id });
+      const chat =
+        state.threads.find((item) => item.projectId === result.id && !item.archived) ??
+        (await action('thread:new', { projectId: result.id }));
       if (chat) setActiveId(chat.id);
+      setArchived(false);
     }
+  }
+  function projectSaved(updated: Project) {
+    if (updated.hidden && project?.id === updated.id) {
+      setSearchHit(undefined);
+      setActiveId(undefined);
+      setProjectId(state.projects.find((item) => item.id !== updated.id && !item.hidden)?.id);
+    } else if (!updated.hidden && state.projects.find((item) => item.id === updated.id)?.hidden) {
+      setProjectId(updated.id);
+      setActiveId(
+        state.threads.find((item) => item.projectId === updated.id && !item.archived)?.id,
+      );
+      setArchived(false);
+    }
+  }
+  function selectSearchHit(hit: SearchHit) {
+    setActiveId(hit.threadId);
+    setProjectId(state.threads.find((item) => item.id === hit.threadId)?.projectId);
+    setArchived(hit.archived);
+    setSearch(false);
+    setSearchHit(hit);
   }
   async function refresh() {
     if (!thread) return;
@@ -340,7 +386,7 @@ export default function App() {
     setFileItems([]);
     setPanelError('');
     setTerminal(false);
-    stick.current = true;
+    stick.current = !searchHit;
   }, [activeId]);
   useEffect(() => {
     void refresh();
@@ -356,6 +402,18 @@ export default function App() {
     if (stick.current) end.current?.scrollIntoView({ behavior: 'instant' });
   }, [thread?.entries, thread?.status]);
   useEffect(() => {
+    if (!searchHit || searchHit.threadId !== activeId) return;
+    stick.current = false;
+    const entry = searchHit.entryId
+      ? Array.from(messages.current?.querySelectorAll<HTMLElement>('[data-entry-id]') ?? []).find(
+          (element) => element.dataset.entryId === searchHit.entryId,
+        )
+      : undefined;
+    entry?.querySelector('details')?.setAttribute('open', '');
+    entry?.focus({ preventScroll: true });
+    (entry ?? messages.current)?.scrollIntoView({ block: 'center', behavior: 'instant' });
+  }, [activeId, searchHit]);
+  useEffect(() => {
     const keyboard = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key === 'n') {
         event.preventDefault();
@@ -365,10 +423,16 @@ export default function App() {
         event.preventDefault();
         setSettings(true);
       }
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        setSearch(true);
+      }
       if (event.key === 'Escape') {
         setSettings(false);
         setWorktree(false);
         setRename(false);
+        setSearch(false);
+        setProjectSettings(undefined);
       }
     };
     window.addEventListener('keydown', keyboard);
@@ -387,6 +451,7 @@ export default function App() {
       setActiveId(target.id);
     }
     const id = target.id;
+    setSearchHit(undefined);
     const text = draft;
     const files = attached[draftKey] ?? [];
     setPending((value) => ({ ...value, [id]: true }));
@@ -411,7 +476,7 @@ export default function App() {
     .filter(
       (item) =>
         item.archived === archived &&
-        (!filter || item.title.toLowerCase().includes(filter.toLowerCase())),
+        !state.projects.find((project) => project.id === item.projectId)?.hidden,
     )
     .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt));
   const currentPermissions = permissions.filter((item) => item.threadId === thread?.id);
@@ -427,19 +492,14 @@ export default function App() {
           </span>
           <span className="version">α</span>
         </div>
-        <button className="new-chat" onClick={() => void newChat()}>
+        <button className="new-chat" disabled={project?.hidden} onClick={() => void newChat()}>
           <Plus size={17} />
           New chat<kbd>Ctrl N</kbd>
         </button>
-        <div className="search">
+        <button className="search" aria-label="Search chats" onClick={() => setSearch(true)}>
           <Search size={14} />
-          <input
-            aria-label="Search chats"
-            placeholder="Search chats"
-            value={filter}
-            onChange={(event) => setFilter(event.target.value)}
-          />
-        </div>
+          Search chats<kbd>Ctrl Shift F</kbd>
+        </button>
         <div className="section-heading">
           <span>PROJECTS</span>
           <button
@@ -451,28 +511,65 @@ export default function App() {
           </button>
         </div>
         <div className="project-list">
-          {state.projects.map((item) => (
-            <button
-              key={item.id}
-              className={`project-row ${project?.id === item.id ? 'selected' : ''}`}
-              title={item.path}
-              onClick={() => {
-                setProjectId(item.id);
-                setActiveId(
-                  state.threads.find((chat) => chat.projectId === item.id && !chat.archived)?.id,
-                );
-              }}
-            >
-              <Folder size={15} />
-              <span>{item.name}</span>
-              {project?.id === item.id && <ChevronDown size={13} />}
-            </button>
-          ))}
-          {!state.projects.length && (
+          {state.projects
+            .filter((item) => !item.hidden)
+            .map((item) => (
+              <div className="project-item" key={item.id}>
+                <button
+                  className={`project-row ${project?.id === item.id ? 'selected' : ''}`}
+                  title={item.path}
+                  onClick={() => {
+                    setSearchHit(undefined);
+                    setProjectId(item.id);
+                    setActiveId(
+                      state.threads.find((chat) => chat.projectId === item.id && !chat.archived)
+                        ?.id,
+                    );
+                  }}
+                >
+                  <Folder size={15} />
+                  <span>{item.name}</span>
+                  {project?.id === item.id && <ChevronDown size={13} />}
+                </button>
+                <button
+                  className="icon-button"
+                  aria-label={`Manage project ${item.name}`}
+                  onClick={() => setProjectSettings(item.id)}
+                >
+                  <MoreHorizontal size={15} />
+                </button>
+              </div>
+            ))}
+          {!state.projects.some((item) => !item.hidden) && (
             <button className="open-project" onClick={() => void addProject()}>
               <FolderOpen size={15} />
               Open a project
             </button>
+          )}
+          {state.projects.some((item) => item.hidden) && (
+            <>
+              <button
+                className="removed-projects"
+                aria-expanded={removedProjects}
+                onClick={() => setRemovedProjects(!removedProjects)}
+              >
+                Removed projects
+              </button>
+              {removedProjects &&
+                state.projects
+                  .filter((item) => item.hidden)
+                  .map((item) => (
+                    <button
+                      className="project-row"
+                      key={item.id}
+                      aria-label={`Manage removed project ${item.name}`}
+                      onClick={() => setProjectSettings(item.id)}
+                    >
+                      <Folder size={15} />
+                      <span>{item.name}</span>
+                    </button>
+                  ))}
+            </>
           )}
         </div>
         <div className="section-heading">
@@ -492,6 +589,7 @@ export default function App() {
               key={item.id}
               className={`thread-row ${activeId === item.id ? 'selected' : ''}`}
               onClick={() => {
+                setSearchHit(undefined);
                 setActiveId(item.id);
                 setProjectId(item.projectId);
               }}
@@ -613,6 +711,22 @@ export default function App() {
         </header>
         <div className="workspace-body">
           <section className="conversation">
+            {searchHit && searchHit.threadId === activeId && (
+              <div className="search-context" role="status">
+                <span>
+                  Search match · {searchHit.kind}: {searchHit.before}
+                  <mark>{searchHit.match}</mark>
+                  {searchHit.after}
+                </span>
+                <button
+                  className="icon-button"
+                  aria-label="Dismiss search match"
+                  onClick={() => setSearchHit(undefined)}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            )}
             <div
               className="messages"
               ref={messages}
@@ -676,7 +790,18 @@ export default function App() {
               )}
               <div className="timeline">
                 {thread?.entries.map((entry) => (
-                  <Activity key={entry.id} entry={entry} />
+                  <div
+                    key={entry.id}
+                    data-entry-id={entry.id}
+                    tabIndex={-1}
+                    className={
+                      searchHit?.threadId === thread.id && searchHit.entryId === entry.id
+                        ? 'matched-entry'
+                        : ''
+                    }
+                  >
+                    <Activity entry={entry} />
+                  </div>
                 ))}
               </div>
               {thread?.error && (
@@ -755,7 +880,22 @@ export default function App() {
                   </div>
                 </div>
               ))}
-              {thread?.archived ? (
+              {project?.hidden ? (
+                <div className="archived-banner">
+                  This project was removed from the sidebar.
+                  <button
+                    onClick={async () => {
+                      const updated = await action('project:edit', {
+                        projectId: project.id,
+                        hidden: false,
+                      });
+                      if (updated) projectSaved(updated);
+                    }}
+                  >
+                    Restore project
+                  </button>
+                </div>
+              ) : thread?.archived ? (
                 <div className="archived-banner">
                   This chat is archived.
                   <button
@@ -1053,6 +1193,15 @@ export default function App() {
           </button>
         </div>
       )}
+      {search && <ChatSearch close={() => setSearch(false)} select={selectSearchHit} />}
+      {projectSettings && state.projects.find((item) => item.id === projectSettings) && (
+        <ProjectSettings
+          key={projectSettings}
+          project={state.projects.find((item) => item.id === projectSettings)!}
+          close={() => setProjectSettings(undefined)}
+          saved={projectSaved}
+        />
+      )}
       {settings && (
         <div className="modal-backdrop" onClick={() => setSettings(false)}>
           <section
@@ -1156,7 +1305,7 @@ export default function App() {
                 </button>
               )}
             </div>
-            <small className="muted">Grok Studio 0.2.0 · Independent client · Windows first</small>
+            <small className="muted">Grok Studio 0.3.0 · Independent client · Windows first</small>
           </section>
         </div>
       )}

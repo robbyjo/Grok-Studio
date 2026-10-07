@@ -4,6 +4,23 @@ export interface Project {
   id: string;
   name: string;
   path: string;
+  hidden?: boolean;
+}
+export interface SearchHit {
+  threadId: string;
+  entryId?: string;
+  title: string;
+  projectName: string;
+  archived: boolean;
+  hidden: boolean;
+  kind: Entry['type'] | 'chat';
+  before: string;
+  match: string;
+  after: string;
+}
+export interface SearchResults {
+  hits: SearchHit[];
+  truncated: boolean;
 }
 export interface Entry {
   id: string;

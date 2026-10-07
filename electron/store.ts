@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { State, Thread, Wire } from '../shared/types';
+import type { Project, State, Thread, Wire } from '../shared/types';
 
 export class Store {
   state: State;
@@ -31,6 +31,41 @@ export class Store {
     const thread = this.state.threads.find((item) => item.id === id);
     if (!thread) throw new Error('Chat not found.');
     return thread;
+  }
+  project(id: string): Project {
+    const project = this.state.projects.find((item) => item.id === id);
+    if (!project) throw new Error('Project not found.');
+    return project;
+  }
+  openProject(path: string, name: string): Project {
+    let project = this.state.projects.find((item) => item.path === path);
+    if (!project) {
+      project = { id: randomUUID(), name, path };
+      this.state.projects.push(project);
+    }
+    project.hidden = false;
+    this.flush();
+    return project;
+  }
+  editProject(id: string, update: { name?: string; hidden?: boolean }): Project {
+    const project = this.project(id);
+    if (
+      update.name !== undefined &&
+      (!update.name.trim() || update.name.length > 120 || update.name.includes('\0'))
+    )
+      throw new Error('Enter a project name between 1 and 120 characters.');
+    if (
+      update.hidden &&
+      this.state.threads.some(
+        (item) =>
+          item.projectId === id && ['running', 'approval', 'connecting'].includes(item.status),
+      )
+    )
+      throw new Error('Stop active turns in this project before removing it.');
+    if (update.name !== undefined) project.name = update.name.trim();
+    if (update.hidden !== undefined) project.hidden = update.hidden;
+    this.flush();
+    return project;
   }
   create(projectId: string, cwd: string): Thread {
     const now = new Date().toISOString();

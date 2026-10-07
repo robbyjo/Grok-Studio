@@ -11,6 +11,7 @@ import { Mcp } from './mcp';
 import { openDocument, saveDocument } from './editor';
 import { changeIndex, commitIndex, fileDiff } from './git-actions';
 import { rendererUrlMatches } from './renderer-origin';
+import { searchTranscripts } from './search';
 import { bundledRuntime, desktopDataDirectory, runtimeExecutable } from './runtime';
 import { createWorktree, directory, files, gitState, textFile } from './workspace';
 import type { Attachment, DesktopEvent, Wire } from '../shared/types';
@@ -28,6 +29,7 @@ let dirtyDocuments = 0;
 let closing = false;
 let closePrompt = false;
 const attachments = new Map<string, Attachment>();
+let searchRequest = 0;
 function emit(event: DesktopEvent) {
   if (window && !window.isDestroyed()) window.webContents.send('desktop:event', event);
 }
@@ -87,6 +89,21 @@ async function dispatch(method: string, args: Wire) {
   switch (method) {
     case 'state':
       return store.state;
+    case 'chats:search': {
+      const request = ++searchRequest;
+      return searchTranscripts(
+        store.state,
+        string(args.query, 'search text', 512),
+        {
+          archived: args.archived === true,
+          hidden: args.hidden === true,
+        },
+        () => request !== searchRequest,
+      );
+    }
+    case 'chats:search-cancel':
+      searchRequest++;
+      return;
     case 'runtime:info':
       return {
         portable: Boolean(process.env.PORTABLE_EXECUTABLE_DIR),
@@ -127,17 +144,28 @@ async function dispatch(method: string, args: Wire) {
       });
       if (selected.canceled) return null;
       const path = await directory(selected.filePaths[0]);
-      let project = store.state.projects.find((item) => item.path === path);
-      if (!project) {
-        project = { id: randomUUID(), name: basename(path), path };
-        store.state.projects.push(project);
-        store.flush();
+      return store.openProject(path, basename(path));
+    }
+    case 'project:edit': {
+      const id = string(args.projectId, 'project ID', 100);
+      if (args.hidden !== undefined && typeof args.hidden !== 'boolean')
+        throw new Error('Invalid project visibility.');
+      const project = store.editProject(id, {
+        name: args.name === undefined ? undefined : string(args.name, 'project name', 120),
+        hidden: args.hidden,
+      });
+      if (project.hidden) {
+        for (const item of store.state.threads.filter((item) => item.projectId === id)) {
+          agents.disconnect(item.id);
+          terminals.close(item.id);
+        }
       }
       return project;
     }
     case 'thread:new': {
       const project = store.state.projects.find((item) => item.id === args.projectId);
       if (!project) throw new Error('Choose a project first.');
+      if (project.hidden) throw new Error('Restore the project before creating a new chat.');
       return store.create(project.id, project.path);
     }
     case 'thread:edit': {

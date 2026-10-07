@@ -4,13 +4,13 @@ A Windows-first desktop GUI for [Grok Build](https://github.com/xai-org/grok-bui
 
 Project repository: [robbyjo/Grok-Studio](https://github.com/robbyjo/Grok-Studio). Development priorities are tracked in [TODO.md](TODO.md).
 
-**Current release: 0.2.0 alpha, Windows x64 portable.** Full Codex local workflow parity is not complete. Uses Electron, React, TypeScript, a native PowerShell terminal, and Grok's Agent Client Protocol (ACP). macOS and Linux are architectural targets, not validated releases.
+**Current release: 0.3.0 alpha, Windows x64 portable.** Full Codex local workflow parity is not complete. Uses Electron, React, TypeScript, a native PowerShell terminal, and Grok's Agent Client Protocol (ACP). macOS and Linux are architectural targets, not validated releases.
 
 ## Run on Windows
 
 Requirements: Windows 10/11 x64; Git for Git workflows; your project's development tools. The portable executable includes the official `grok 1.0.46` runtime. Grok sign-in and network access are needed for model-backed coding; this is not an offline model.
 
-1. Copy `release/Grok-Studio-0.2.0-Portable.exe` to a writable folder and double-click it. No installer or separate Electron/Node/Grok installation is needed to open the GUI. The executable extracts application files to a temporary directory while running.
+1. Copy `release/Grok-Studio-0.3.0-Portable.exe` to a writable folder and double-click it. No installer or separate Electron/Node/Grok installation is needed to open the GUI. The executable extracts application files to a temporary directory while running.
 2. Open a project. The default runtime selection is **bundled**. Open the integrated terminal and run `grok login` to authenticate the portable Grok profile.
 3. Send a prompt. Grok starts in the project's folder. Approval requests appear above the composer. “Stop turn” cancels the agent turn.
 4. To connect MCPs, open **Settings → MCP servers** in a project chat. Add a STDIO command with one argument per line, or a Streamable HTTP/SSE URL; choose user or project scope. Select **Test connection** to check handshake and tool discovery. After a configuration change, reconnect the chat to load the new configuration.
@@ -32,7 +32,8 @@ Run `npm run runtime` to obtain the pinned runtime for development, or use an ex
 
 ## Working features
 
-- Native project folder selection; multiple project chats; titles, search by title, pins, archives, and restore.
+- Native project folder selection, rename, reversible sidebar removal and restoration; multiple project chats, titles, pins and archives.
+- Search saved transcripts and chat metadata with literal phrases, archived/removed-project scope controls, highlighted snippets and matching-message navigation.
 - Persistent local transcripts and Grok session IDs; reconnect/resume using `session/load`.
 - Streamed Markdown, reasoning disclosures, tool input/output, plans, and completion records.
 - Per-chat agent processes, simultaneous independent chats, cancellation, crash/error display, and cleanup on quit.
@@ -59,6 +60,10 @@ The renderer has no Node access. A sandboxed, isolated preload exposes an allowl
 **Grok's OS-level agent sandbox is unavailable on Windows in the inspected upstream source.** Tool approvals are not a Windows filesystem sandbox. Configured Grok allow rules still apply. The interactive terminal executes as the signed-in Windows user. Project trust may enable project hooks/servers and is displayed separately from tool approval. The GUI never parses or copies Grok's credential files.
 
 Select **Files** to edit, save or reload a file. Reloading a changed draft requires an explicit discard choice. Saves reject stale content, Git metadata, external paths, hardlinks, binary files and invalid UTF-8. Saving and Git mutations reject active agent turns. Drafts are held in memory; crashes can lose them. Content hashes detect external changes before replacement, but this is not a cross-process filesystem lock.
+
+Select **Search chats** or press **Ctrl+Shift+F** to search this desktop profile. Search ignores case, treats punctuation literally and returns up to 100 matching messages/chat metadata records, sorted by recent chat; narrow the phrase when more results exist. It includes full saved messages, reasoning, plans and tool input/output, including output beyond the tool card's display limit. Selecting a result opens its chat, expands an activity card when applicable and highlights the matching entry. The match snippet remains visible for clipped activity output. Archived chats are included by default; removed projects are opt-in. Use **Refresh results** after a streaming turn or metadata change. Search does not read external CLI sessions, workspace file contents or Grok credential files. Indexed search, pagination and sustained large-history performance remain TODO.
+
+Use a project's **…** button to rename it or **Remove from sidebar**. Removal retains saved chats, archive/pin flags, files, worktrees and in-memory file drafts; it closes idle Grok connections and terminals, and refuses active turns. Restore through **Removed projects**, or reopen the same folder to reuse its original project identity and chats. This is a sidebar operation; it does not delete the project or its history. Removed projects are hidden at startup and new chats require restoration.
 
 Select **Changes** to inspect a file, stage/unstage it and **Review staged commit**. The review lists staged paths and their diff; enter a message and choose **Commit staged index**. A changed index requires another review. Commits require Git identity, may run repository hooks and refuse unresolved conflicts or staged files outside a selected nested workspace. The terminal and external tools can still change the workspace; stop other writers before committing. Git chunk actions, push/PR workflows, worktree deletion/apply and checkpoint rollback remain terminal or agent operations.
 

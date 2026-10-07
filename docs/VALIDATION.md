@@ -1,6 +1,14 @@
 # Validation record
 
-Validation performed on Windows x64 on October 6–7, 2026 (America/New_York). Current portable release: 0.2.0.
+Validation performed on Windows x64 on October 6–7, 2026 (America/New_York). Current source release: 0.3.0; the previous validated portable is 0.2.0 until the new distribution checks below are recorded.
+
+## 0.3.0 chat and project acceptance
+
+The backend suite now passes **31 tests, none skipped**. New regressions cover literal punctuation and Unicode case matching, full stored tool output beyond the card display limit, plans/reasoning/notices, metadata, archived/removed scopes, recent-chat ordering, bounded snippets, the 100-result cap, invalid queries and cooperative cancellation. Search excludes session/config metadata and does not read Grok credential files. A no-match scan across 1,000 fixture entries yields to cancellation; this is a focused scheduling regression, not sustained large-history performance acceptance.
+
+Project state tests prove rename/removal/reopen preserve project identity, transcripts, session IDs, worktree paths and archive flags across restart. Removal rejects running, approval and connecting chats in the project without applying a simultaneous rename; invalid names and unknown project IDs also leave state intact.
+
+Two native GUI scenarios pass from the source build. The organization scenario searches a full transcript, highlights Unicode matches, navigates to an older visible message, expands a matching tool card, filters archived and removed projects, renames a project, cancels/confirms removal, retains an unsaved file draft across removal/restoration, saves it and restarts with the project still removed. Reopening through a native-picker response fixture uses the actual canonical path/restore code and preserves original chat/project identities and archive flags. Search-dialog screenshots were visually inspected. Results are desktop-profile-local, refreshed explicitly during streaming, and capped at 100; indexed search, pagination, bounded history storage and broad performance acceptance remain TODO.
 
 ## Confirmed
 
