@@ -54,10 +54,13 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       });
     }
     result(message.id, { ...session, sessionId });
-    if (scenario === 'trust')
+    if (scenario === 'trust' || scenario === 'trust-prefixed')
       send({
         id: 903,
-        method: 'x.ai/folder_trust/request',
+        method:
+          scenario === 'trust-prefixed'
+            ? '_x.ai/folder_trust/request'
+            : 'x.ai/folder_trust/request',
         params: {
           sessionId,
           cwd: message.params.cwd,
@@ -69,7 +72,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   else if (message.method === 'session/set_mode') result(message.id, {});
   else if (message.method === 'session/set_config_option')
     result(message.id, {
-      configOptions: [{ ...session.configOptions[0], currentValue: message.params.value.value }],
+      configOptions: [{ ...session.configOptions[0], currentValue: message.params.value }],
     });
   else if (message.method === 'session/prompt') {
     promptId = message.id;
@@ -110,7 +113,12 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       status: selected === 'allow-once' ? 'completed' : 'failed',
       rawOutput: { selected: selected ?? 'cancelled' },
     });
-    result(promptId, { stopReason: selected ? 'end_turn' : 'cancelled' });
+    result(promptId, {
+      stopReason:
+        selected && !(scenario === 'reject-cancels' && selected === 'reject-once')
+          ? 'end_turn'
+          : 'cancelled',
+    });
   } else if (message.method === 'session/cancel') {
     if (scenario !== 'unresponsive' && promptId) result(promptId, { stopReason: 'cancelled' });
   } else if (message.method === 'fixture/echo') {

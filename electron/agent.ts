@@ -4,6 +4,7 @@ import { RpcProcess } from './rpc';
 import { Store } from './store';
 import { runtimeExecutable } from './runtime';
 import type { Attachment, DesktopEvent, Permission, Wire } from '../shared/types';
+import { version } from '../package.json';
 
 interface Connection {
   rpc: RpcProcess;
@@ -47,7 +48,7 @@ export class Agents {
       }
     });
     connection.rpc.on('request', (message: Wire) => {
-      if (message.method === 'x.ai/folder_trust/request') {
+      if (['x.ai/folder_trust/request', '_x.ai/folder_trust/request'].includes(message.method)) {
         if (resolve(message.params?.cwd ?? '') !== resolve(thread.cwd)) {
           connection.rpc.respond(message.id, { outcome: 'reject' });
           return;
@@ -113,8 +114,13 @@ export class Agents {
   private async establish(id: string) {
     const thread = this.store.thread(id);
     const connection = this.connection(id);
-    if (connection.initialized && thread.sessionId && thread.session?.connected)
+    if (connection.initialized && thread.sessionId && thread.session?.connected) {
+      if (thread.status === 'interrupted' && !connection.turn) {
+        thread.status = 'idle';
+        this.store.touch();
+      }
       return thread.session;
+    }
     thread.status = 'connecting';
     thread.error = undefined;
     this.store.touch();
@@ -123,7 +129,7 @@ export class Agents {
         connection.initialized = await connection.rpc.request('initialize', {
           protocolVersion: 1,
           clientCapabilities: { _meta: { 'x.ai/folderTrust': { interactive: true } } },
-          clientInfo: { name: 'grok-studio', title: 'Grok Studio', version: '0.2.0' },
+          clientInfo: { name: 'grok-studio', title: 'Grok Studio', version },
         });
         if (connection.initialized.protocolVersion !== 1) {
           this.connections.delete(id);
@@ -270,9 +276,10 @@ export class Agents {
   }
   async config(id: string, configId: string, value: string) {
     const thread = this.store.thread(id);
-    if (thread.status !== 'idle')
+    if (['running', 'approval', 'connecting'].includes(thread.status))
       throw new Error('Change session settings while the chat is idle.');
     await this.connect(id);
+    if (thread.status !== 'idle') throw new Error('Chat is not ready.');
     const connection = this.connections.get(id)!;
     const result =
       configId === '__mode'
@@ -283,7 +290,7 @@ export class Agents {
         : await connection.rpc.request('session/set_config_option', {
             sessionId: thread.sessionId,
             configId,
-            value: { value },
+            value,
           });
     if (configId === '__mode')
       thread.session = {

@@ -116,6 +116,12 @@ test('stop sends session/cancel and preserves an interrupted transcript', async 
     await prompt;
     assert.equal(thread.status, 'interrupted');
     assert.ok(thread.entries.some((entry) => entry.text === 'Hello world'));
+    await agents.config(thread.id, 'model', 'fixture-model');
+    const next = agents.prompt(thread.id, 'Continue after stop', []);
+    await until(() => thread.status === 'running');
+    agents.cancel(thread.id);
+    await next;
+    assert.equal(thread.status, 'interrupted');
   } finally {
     agents.shutdown();
     store.flush();
@@ -205,7 +211,7 @@ test('unsupported session loading never silently replaces the saved session', as
   }
 });
 test('folder trust is explicit and uses the vendor outcome format', async () => {
-  const { agents, thread, store } = setup('trust');
+  const { agents, thread, store } = setup('trust-prefixed');
   try {
     await agents.connect(thread.id);
     await until(() => agents.permissionsSnapshot().length > 0);
@@ -215,6 +221,26 @@ test('folder trust is explicit and uses the vendor outcome format', async () => 
     assert.equal(thread.status, 'idle');
     assert.equal(agents.permissionsSnapshot().length, 0);
     await assert.rejects(agents.authenticate(thread.id, 'unadvertised'), /advertised/);
+  } finally {
+    agents.shutdown();
+    store.flush();
+  }
+});
+
+test('a native permission rejection can cancel a turn and the next turn remains usable', async () => {
+  const { agents, thread, store } = setup('reject-cancels');
+  try {
+    const rejected = agents.prompt(thread.id, 'Reject this command', []);
+    await until(() => agents.permissionsSnapshot().length > 0);
+    agents.approve(agents.permissionsSnapshot()[0].id, 'reject-once');
+    await rejected;
+    assert.equal(thread.status, 'interrupted');
+    const continued = agents.prompt(thread.id, 'Continue with approval', []);
+    await until(() => agents.permissionsSnapshot().length > 0);
+    agents.approve(agents.permissionsSnapshot()[0].id, 'allow-once');
+    await continued;
+    assert.equal(thread.status, 'idle');
+    assert.equal(thread.entries.filter((entry) => entry.type === 'user').length, 2);
   } finally {
     agents.shutdown();
     store.flush();

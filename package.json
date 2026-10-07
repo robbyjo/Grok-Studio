@@ -15,6 +15,8 @@
     "test": "tsx --test tests/*.test.ts",
     "test:ui": "playwright test",
     "test:portable": "tsx scripts/smoke-portable.ts",
+    "test:live": "tsx scripts/live-acceptance.ts --run",
+    "test:remote": "tsx scripts/remote-portable.ts",
     "runtime": "node scripts/runtime.cjs",
     "package:portable": "npm run build && npm run runtime && npm run licenses && electron-builder --win portable --x64",
     "package:win": "npm run build && npm run runtime && npm run licenses && electron-builder --win nsis --x64",
