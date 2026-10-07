@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { basename, join, isAbsolute, dirname, delimiter } from 'node:path';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { readFile, stat } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
@@ -15,7 +15,10 @@ import { createWorktree, directory, files, gitState, textFile } from './workspac
 import type { Attachment, DesktopEvent, Wire } from '../shared/types';
 
 const isDev = process.argv.includes('--dev');
-const rendererFile = join(__dirname, '../../dist/index.html');
+const rendererPath = join(__dirname, '../../dist/index.html');
+// Chromium canonicalizes Windows short paths during file navigation. Use the
+// same canonical path for loading and exact IPC sender validation.
+const rendererFile = isDev ? rendererPath : realpathSync(rendererPath);
 let window: BrowserWindow;
 let store: Store;
 let agents: Agents;

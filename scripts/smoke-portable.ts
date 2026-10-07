@@ -2,6 +2,7 @@ import { chromium, type Browser } from '@playwright/test';
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
 import { mkdir, mkdtemp, copyFile, writeFile, rename, readFile } from 'node:fs/promises';
 import { resolve, join, sep } from 'node:path';
+import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
 import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
@@ -13,6 +14,22 @@ async function main() {
   const root = await mkdtemp(resolve('.test-data/portable-'));
   const first = join(root, 'Portable location with spaces');
   const second = join(root, 'Relocated portable app');
+  const extraction = await mkdtemp(join(tmpdir(), 'Grok Studio extraction '));
+  const extractionAlias = execFileSync(
+    'powershell.exe',
+    [
+      '-NoLogo',
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      '(New-Object -ComObject Scripting.FileSystemObject).GetFolder($env:GROK_STUDIO_TEST_EXTRACTION).ShortPath',
+    ],
+    {
+      env: { ...process.env, GROK_STUDIO_TEST_EXTRACTION: extraction },
+      encoding: 'utf8',
+      windowsHide: true,
+    },
+  ).trim();
   const project = join(root, 'project');
   await mkdir(project);
   await mkdir(join(first, 'Grok Desktop Data'), { recursive: true });
@@ -51,9 +68,16 @@ async function main() {
     const port = (portServer.address() as import('node:net').AddressInfo).port;
     await new Promise<void>((done) => portServer.close(() => done()));
     let exited = false;
+    const launchEnv = { ...env };
+    // Preserve the normal temp path first, then exercise a Windows 8.3 path on
+    // relocation (where the volume supports short filenames).
+    if (location === second) {
+      launchEnv.TEMP = extractionAlias;
+      launchEnv.TMP = extractionAlias;
+    }
     child = spawn(join(location, executableName), [`--remote-debugging-port=${port}`], {
       cwd: location,
-      env,
+      env: launchEnv,
       windowsHide: true,
       stdio: 'ignore',
     });
