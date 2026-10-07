@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { basename, join, isAbsolute, dirname, delimiter } from 'node:path';
-import { existsSync, mkdirSync, realpathSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { readFile, stat } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
@@ -10,15 +10,13 @@ import { Terminals } from './terminals';
 import { Mcp } from './mcp';
 import { openDocument, saveDocument } from './editor';
 import { changeIndex, commitIndex, fileDiff } from './git-actions';
+import { rendererUrlMatches } from './renderer-origin';
 import { bundledRuntime, desktopDataDirectory, runtimeExecutable } from './runtime';
 import { createWorktree, directory, files, gitState, textFile } from './workspace';
 import type { Attachment, DesktopEvent, Wire } from '../shared/types';
 
 const isDev = process.argv.includes('--dev');
-const rendererPath = join(__dirname, '../../dist/index.html');
-// Chromium canonicalizes Windows short paths during file navigation. Use the
-// same canonical path for loading and exact IPC sender validation.
-const rendererFile = isDev ? rendererPath : realpathSync(rendererPath);
+const rendererFile = join(__dirname, '../../dist/index.html');
 let window: BrowserWindow;
 let store: Store;
 let agents: Agents;
@@ -42,7 +40,7 @@ function trusted(frame: Electron.WebFrameMain | null) {
   return (
     frame &&
     frame === window.webContents.mainFrame &&
-    frame.url === (isDev ? 'http://127.0.0.1:5173/' : pathToFileURL(rendererFile).href)
+    (isDev ? frame.url === 'http://127.0.0.1:5173/' : rendererUrlMatches(frame.url, rendererFile))
   );
 }
 async function dispatch(method: string, args: Wire) {
