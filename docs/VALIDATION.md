@@ -1,6 +1,14 @@
 # Validation record
 
-Validation performed on Windows x64 on October 6–7, 2026 (America/New_York). Current version: **Grok Workbench 0.6.1**, with the Grok Rust library embedded instead of a packaged CLI. Earlier sections retain historical version-specific names and results.
+Validation performed on Windows x64 on October 6–7, 2026 (America/New_York). Current version: **Grok Workbench 0.6.2**, with the Grok Rust library embedded instead of a packaged CLI. Earlier sections retain historical version-specific names and results.
+
+## 0.6.2 account sign-in and persistence
+
+The account circle/sign-in control is always visible directly above Settings, including with no project/chat. OAuth uses a separate short-lived native helper and the selected Grok profile, without creating sessions, prompting, trusting project configuration or running tools. Settings also always exposes the OAuth sign-in action. Native OAuth saving/refresh remains in the original authentication manager. API keys now default to Windows encrypted persistence; explicit session-only storage is still available. Saved API keys select API mode. Account display status is kept in memory and whitelisted to a sign-in flag/profile label; native credentials are not returned to the renderer or stored in desktop history/diagnostics.
+
+Backend regressions verify project-free sign-in, saved-profile reuse, cancellation/owned-process cleanup and credential-field omission. GUI acceptance starts with zero projects/chats, verifies the account button sits above Settings and both sign-in controls exist, saves a fake API key with the default remember option, restarts the entire app and verifies Windows decryption. A real existing OAuth profile also passed project-free sign-in and saved-status recognition after full app restart (`live-account-l9PU99/result.json`). It used the same local profile and no credential transfer. Windows itself was not rebooted for this patch; persistence is implemented with durable native OAuth files and Windows encrypted key storage, and full app restart was exercised.
+
+Final checks passed **53 backend tests**, **six packaged GUI scenarios**, real packaged OAuth account sign-in/restart (`live-account-APN3jc/result.json`) and actual portable launch/MCP/PowerShell/relocation (`portable-account-exit-final.log`). Account-helper exit is awaited before the final application exit. The local unsigned **`Grok-Workbench-0.6.2-Portable.exe`** is **143,509,983 bytes**, SHA-256 **`d35a2a97d127ac0bd086cde6905e4b102e80bf93aa00c9c52f07a16dc99030e8`**. The native engine and its hash are unchanged. API-key encryption/restart uses a fake key; live API-key model access remains a distinct open gate.
 
 ## 0.6.1 project rename
 

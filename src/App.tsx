@@ -55,6 +55,7 @@ import TaskDashboard, { UsageIndicators } from './TaskDashboard';
 import Organization from './Organization';
 import DesktopPreferences from './DesktopPreferences';
 import AuthenticationSettings from './AuthenticationSettings';
+import AccountControl from './AccountControl';
 import MediaStudio, { MediaPreview } from './MediaStudio';
 import { defaultShortcuts, matchesShortcut } from '../shared/shortcuts';
 import { useAccessibleDialogs } from './accessibility';
@@ -753,6 +754,7 @@ export default function App() {
               Local machine<small>Windows · local workflows</small>
             </span>
           </div>
+          <AccountControl state={state} />
           <button
             aria-label="Settings"
             className="settings-button"
@@ -1421,7 +1423,7 @@ export default function App() {
           >
             <div className="modal-header">
               <div>
-                <span className="eyebrow">GROK DESKTOP</span>
+                <span className="eyebrow">GROK WORKBENCH</span>
                 <h2>Settings</h2>
               </div>
               <button
@@ -1539,7 +1541,7 @@ export default function App() {
               )}
             </div>
             <small className="muted">
-              Grok Workbench 0.6.1 · Independent client · Windows first
+              Grok Workbench 0.6.2 · Independent client · Windows first
             </small>
           </section>
         </div>

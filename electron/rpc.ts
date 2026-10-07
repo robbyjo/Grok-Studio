@@ -3,8 +3,9 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import type { Wire } from '../shared/types';
 export type RpcClient = Pick<
   RpcProcess,
-  'request' | 'notify' | 'respond' | 'reject' | 'close' | 'waitForExit' | 'on'
->;
+  'request' | 'notify' | 'respond' | 'reject' | 'close' | 'waitForExit'
+> &
+  Pick<EventEmitter, 'on'>;
 
 export class RpcError extends Error {
   constructor(

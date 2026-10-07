@@ -70,6 +70,7 @@ Windows local coding workflows come first. The detailed capability/evidence matr
 - [x] Embed the pinned Apache-2.0 Grok Rust agent library in an isolated native helper; remove the packaged Grok CLI dependency while preserving OAuth and API-key selection.
 - [x] Original real OAuth coding/MCP acceptance, native integration lifecycle and CLI import/fork/rewind/handoff acceptance through the embedded engine.
 - [x] Session-only API keys, optional Windows encrypted persistence, method selection and forgetting; native GUI secret-omission/encryption acceptance.
+- [x] Always-visible account/sign-in control above Settings; OAuth before project selection, saved account status and default encrypted API-key persistence with full app restart/decryption acceptance.
 - [ ] Real API-key coding/media acceptance with an account-supplied key; OAuth passes do not complete this gate.
 - [x] Real OAuth image, speech and video generation plus GUI playback. Video privacy test restored and verified the original zero-data-retention setting.
 - [x] Arbitrary-file prompt attachments, durable owned copies, inline bounded images/text, binary references, local image/audio/video preview, export/delete and storage ceiling.

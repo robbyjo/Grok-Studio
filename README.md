@@ -2,15 +2,15 @@
 
 A Windows-first desktop application with **Grok Build built in**, supporting Grok account OAuth and xAI API keys. The target is comparable local coding workflows to Codex wherever Grok supports them. This is an independent Apache-2.0 project; full workflow parity is still being developed.
 
-**0.6.1 alpha · Windows 10/11 x64 · portable executable.** macOS, Linux and ARM64 are future targets. See [TODO.md](TODO.md), the [parity audit](docs/PARITY.md), and [validation evidence](docs/VALIDATION.md).
+**0.6.2 alpha · Windows 10/11 x64 · portable executable.** macOS, Linux and ARM64 are future targets. See [TODO.md](TODO.md), the [parity audit](docs/PARITY.md), and [validation evidence](docs/VALIDATION.md).
 
-[Download the Windows portable executable](https://github.com/robbyjo/Grok-Workbench/releases/download/v0.6.1/Grok-Workbench-0.6.1-Portable.exe) · [SHA-256 checksum](https://github.com/robbyjo/Grok-Workbench/releases/download/v0.6.1/Grok-Workbench-0.6.1-Portable.exe.sha256) · [Release notes](https://github.com/robbyjo/Grok-Workbench/releases/tag/v0.6.1)
+[Download the Windows portable executable](https://github.com/robbyjo/Grok-Workbench/releases/download/v0.6.2/Grok-Workbench-0.6.2-Portable.exe) · [SHA-256 checksum](https://github.com/robbyjo/Grok-Workbench/releases/download/v0.6.2/Grok-Workbench-0.6.2-Portable.exe.sha256) · [Release notes](https://github.com/robbyjo/Grok-Workbench/releases/tag/v0.6.2)
 
 ## Run on Windows
 
-1. Put `Grok-Workbench-0.6.1-Portable.exe` in a writable folder and open it. Electron, Node, the native Grok engine and its app-local Microsoft C++ runtime are included. There is no Grok CLI installation step.
-2. Open a project. In **Settings → Authentication**, choose **Grok account (OAuth)** or **xAI API key**, then **Connect / sign in with selected method**. Complete OAuth in your browser, or enter an API key locally. Keys are session-only by default; optional Windows encrypted storage remembers them for this Windows account and machine.
-3. Send a prompt. Tool approvals and project-trust requests appear above the composer. **Stop turn** cancels the turn. Git and your project's development tools are needed for the corresponding workflows.
+1. Put `Grok-Workbench-0.6.2-Portable.exe` in a writable folder and open it. Electron, Node, the native Grok engine and its app-local Microsoft C++ runtime are included. There is no Grok CLI installation step.
+2. Click the **account circle / Sign in to Grok** directly above **Settings**. You can sign in before opening a project. Choose **Sign in with Grok (OAuth)** and complete browser sign-in, or enter an xAI API key locally and save it. OAuth is saved in your Grok profile; API keys default to Windows encrypted storage. Both are reused after application restarts and Windows reboots on the same Windows account/machine. Uncheck **Remember with Windows encrypted storage** for a session-only API key. Authentication is also available in **Settings → Authentication** without a selected chat.
+3. Open a project and send a prompt. Tool approvals and project-trust requests appear above the composer. **Stop turn** cancels the turn. Git and your project's development tools are needed for the corresponding workflows.
 4. Open **Settings → MCP servers** to add a STDIO command or HTTP/SSE endpoint, test the connection, edit configuration, and inspect effective tools/policies. Reconnect after changing configuration. MCP servers can require their own Node/Python/tools and provider sign-in. The optional [official GitHub OAuth MCP integration](docs/GITHUB-MCP.md) has real identity-check acceptance.
 
 The alpha is unsigned. Model requests require network access and account access/billing. The portable launcher extracts application files into a temporary directory while running.
@@ -38,7 +38,7 @@ Select **Attach files** for up to five files per prompt, up to 50 MiB each. Imag
 
 Portable state, histories, drafts, media, terminal scrollback, diagnostics and the Grok profile live in **`Grok Desktop Data` beside the executable**. Move the executable and that folder together. Grok Workbench retains this legacy directory, application ID and configuration/archive identifiers so the rename preserves existing chats, authentication, attachments and worktree recovery records. Absolute project paths and external MCP dependencies must still exist at their configured locations.
 
-Grok's original authentication manager owns OAuth sign-in/refresh in `Grok Desktop Data/grok`. API keys optionally use Electron's Windows encrypted storage; a copied encrypted key may require re-entry on another computer/account. Normal launches do not copy credentials from other profiles. Cross-machine OAuth credential portability remains an open acceptance gate.
+Grok's original authentication manager owns OAuth sign-in/refresh in `Grok Desktop Data/grok`. API keys default to Electron's Windows encrypted storage; a copied encrypted key may require re-entry on another computer/account. Normal launches do not copy credentials from other profiles. Cross-machine OAuth credential portability remains an open acceptance gate.
 
 Development/unpacked launches retain the legacy `grok-desktop` app-data directory and ordinary Grok home. `GROK_DESKTOP_DATA_DIR` and `GROK_HOME` override them; use absolute paths. History is stored transactionally in SQLite, with atomic metadata JSON backups and corruption recovery. The configurable history budget is 64–2,048 MiB (default 512); new turns are blocked near the budget until history is pruned. This budget is separate from media, terminal scrollback and bounded diagnostics. Upstream-managed Grok session/cache files are not automatically pruned by this desktop budget. Pruning/deleting desktop history removes those records; export anything you need first.
 

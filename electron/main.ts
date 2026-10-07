@@ -19,6 +19,8 @@ import { changeIndex, commitIndex, fileDiff } from './git-actions';
 import { rendererUrlMatches } from './renderer-origin';
 import { Diagnostics } from './diagnostics';
 import { Credentials } from './credentials';
+import { Account } from './account';
+import { EmbeddedRpc } from './embedded-rpc';
 import { Media, generation, mediaType } from './media';
 import { validateShortcuts } from '../shared/shortcuts';
 import {
@@ -46,6 +48,9 @@ let terminals: Terminals;
 let mcp: Mcp;
 let diagnostics: Diagnostics;
 let credentials: Credentials;
+let account: Account;
+let accountMutation = false;
+let accountCancelled = false;
 let media: Media;
 const generating = new Set<string>();
 protocol.registerSchemesAsPrivileged([
@@ -105,6 +110,19 @@ function trusted(frame: Electron.WebFrameMain | null) {
   );
 }
 async function dispatch(method: string, args: Wire) {
+  if (
+    accountMutation &&
+    (/^(agent:|mcp:|integration:|sessions:|configuration:|privacy:|tasks:)/.test(method) ||
+      [
+        'auth:save',
+        'auth:forget',
+        'auth:mode',
+        'auth:sign-in',
+        'settings:save',
+        'media:generate',
+      ].includes(method))
+  )
+    throw new Error('Wait for account sign-in to finish or cancel it first.');
   if (
     actions?.running() &&
     [
@@ -449,7 +467,65 @@ async function dispatch(method: string, args: Wire) {
         executable: runtimeExecutable(store.state.settings.executable),
       };
     case 'auth:status':
-      return credentials.status();
+      return {
+        ...credentials.status(),
+        account: account.snapshot(),
+        mode: store.state.settings.authMode ?? 'auto',
+        signingIn: accountMutation,
+      };
+    case 'auth:account': {
+      let accountError: string | undefined;
+      if (!accountMutation) {
+        try {
+          await account.refresh();
+        } catch {
+          accountError = 'Saved OAuth status is unavailable. You can retry sign-in.';
+        }
+      }
+      return {
+        ...credentials.status(),
+        account: account.snapshot(),
+        mode: store.state.settings.authMode ?? 'auto',
+        accountError,
+        signingIn: accountMutation,
+      };
+    }
+    case 'auth:cancel-sign-in':
+      accountCancelled = true;
+      account.cancel();
+      return;
+    case 'auth:sign-in': {
+      if (
+        workspaceMutation ||
+        mcpMutation ||
+        actions.running() ||
+        generating.size ||
+        store.state.threads.some((t) => ['running', 'approval', 'connecting'].includes(t.status))
+      )
+        throw new Error('Stop active turns and operations before changing authentication.');
+      accountMutation = true;
+      accountCancelled = false;
+      try {
+        await agents.shutdownAndWait();
+        if (accountCancelled) throw new Error('Grok sign-in cancelled.');
+        store.state.settings.authMode = 'oauth';
+        store.flush();
+        emit({ type: 'state', state: store.snapshot() });
+        await account.signIn();
+        return { ...credentials.status(), account: account.snapshot(), mode: 'oauth' };
+      } finally {
+        accountMutation = false;
+        emit({
+          type: 'account',
+          status: {
+            ...credentials.status(),
+            account: account.snapshot(),
+            mode: store.state.settings.authMode ?? 'auto',
+            signingIn: false,
+          },
+        });
+      }
+    }
     case 'auth:save':
     case 'auth:forget':
     case 'auth:mode': {
@@ -458,8 +534,10 @@ async function dispatch(method: string, args: Wire) {
         generating.size
       )
         throw new Error('Stop active turns and media jobs before changing authentication.');
-      if (method === 'auth:save') credentials.save(args.key, args.remember === true);
-      else if (method === 'auth:forget') credentials.forget();
+      if (method === 'auth:save') {
+        credentials.save(args.key, args.remember !== false);
+        store.state.settings.authMode = 'api';
+      } else if (method === 'auth:forget') credentials.forget();
       else {
         if (!['auto', 'oauth', 'api'].includes(args.mode))
           throw new Error('Choose an authentication mode.');
@@ -467,7 +545,21 @@ async function dispatch(method: string, args: Wire) {
       }
       await agents.shutdownAndWait();
       store.flush();
-      return credentials.status();
+      emit({ type: 'state', state: store.snapshot() });
+      emit({
+        type: 'account',
+        status: {
+          ...credentials.status(),
+          account: account.snapshot(),
+          mode: store.state.settings.authMode ?? 'auto',
+          signingIn: false,
+        },
+      });
+      return {
+        ...credentials.status(),
+        account: account.snapshot(),
+        mode: store.state.settings.authMode ?? 'auto',
+      };
     }
     case 'media:list':
       return media.list();
@@ -858,6 +950,7 @@ function createWindow() {
     }
   });
   window.on('closed', () => {
+    account.cancel();
     agents.shutdown();
     terminals.shutdown();
     mcp.shutdown();
@@ -865,6 +958,7 @@ function createWindow() {
     store.flush();
   });
   window.webContents.on('render-process-gone', (_event, details) => {
+    account.cancel();
     diagnostics.record('renderer-crash', { reason: details.reason, code: details.exitCode });
     agents.shutdown();
     store.flush();
@@ -941,10 +1035,22 @@ else {
     agents = new Agents(store, emit);
     store.storageFault = () => agents.shutdown();
     credentials = new Credentials(app.getPath('userData'));
+    const accountDirectory = join(app.getPath('userData'), 'account');
+    mkdirSync(accountDirectory, { recursive: true });
+    account = new Account(
+      () =>
+        new EmbeddedRpc(
+          embeddedEngine(),
+          accountDirectory,
+          credentials.environment('oauth'),
+          'oauth',
+        ),
+    );
     media = new Media(join(app.getPath('userData'), 'media-files'), store.history);
     protocol.handle('grok-media', (request) => media.response(request));
     agents.environment = () => credentials.environment(store.state.settings.authMode ?? 'auto');
-    agents.canStart = () => !workspaceMutation && !mcpMutation && !actions?.running();
+    agents.canStart = () =>
+      !accountMutation && !workspaceMutation && !mcpMutation && !actions?.running();
     sessions = new Sessions(agents, store);
     integrations = new Integrations(agents, store);
     configuration = new Configuration(grokProfile);
@@ -1000,7 +1106,24 @@ else {
     if (BrowserWindow.getAllWindows().length === 0 && store) createWindow();
   });
   // A canceled unsaved-draft close must leave live sessions and terminals running.
-  app.on('will-quit', () => {
+  let shutdownFinished = false;
+  let shutdownPending = false;
+  app.on('will-quit', (event) => {
+    if (!shutdownFinished && account) {
+      event.preventDefault();
+      if (!shutdownPending) {
+        shutdownPending = true;
+        void account
+          .shutdownAndWait()
+          .finally(() => {
+            shutdownFinished = true;
+            // Windows may ignore a second quit while the first quit is unwinding.
+            // All windows have closed and the cleanup below has already run.
+            app.exit(0);
+          })
+          .catch(() => {});
+      }
+    }
     agents?.shutdown();
     terminals?.shutdown();
     mcp?.shutdown();

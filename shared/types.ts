@@ -131,6 +131,7 @@ export interface TextDocument {
   revision: string;
 }
 export type DesktopEvent =
+  | { type: 'account'; status: Wire }
   | { type: 'state'; state: State }
   | { type: 'permission'; permission: Permission }
   | { type: 'permission-closed'; id: string }

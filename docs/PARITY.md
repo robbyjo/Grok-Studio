@@ -1,6 +1,6 @@
 # Local workflow parity audit
 
-Snapshot: October 7, 2026; **Grok Workbench 0.6.1** with embedded Grok Build source `2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8` (library 1.0.45). Full local workflow parity is not achieved. Local workflows come first; remote hosts and automations remain deferred by user choice.
+Snapshot: October 7, 2026; **Grok Workbench 0.6.2** with embedded Grok Build source `2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8` (library 1.0.45). Full local workflow parity is not achieved. Local workflows come first; remote hosts and automations remain deferred by user choice.
 
 ## Core workflows
 

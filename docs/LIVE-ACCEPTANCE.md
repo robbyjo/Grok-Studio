@@ -19,7 +19,7 @@ git -C $taskAcceptance commit -m 'Acceptance baseline'
 $taskAcceptance
 ```
 
-Open this folder in Grok Workbench. Use the built-in engine and **Settings → Authentication → Grok account (OAuth) → Connect / sign in with selected method**, then complete browser sign-in. An API key can instead be entered locally in Settings. Keep the existing permission policy visible; tool approval and folder trust are separate decisions. Record app/engine versions, the selected model/mode, date and the test repository HEAD. Keep credentials out of evidence files.
+Click the account circle directly above **Settings**, choose **Sign in with Grok (OAuth)**, and complete browser sign-in; a project is not required for authentication. An API key can instead be entered locally in the account panel and is remembered with Windows encryption by default. Then open this folder in Grok Workbench with the built-in engine selected. Keep the existing permission policy visible; account sign-in, tool approval and folder trust are separate decisions. Record app/engine versions, the selected model/mode, date and the test repository HEAD. Keep credentials out of evidence files.
 
 ## Checks and required evidence
 
