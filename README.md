@@ -4,13 +4,13 @@ A Windows-first desktop GUI for [Grok Build](https://github.com/xai-org/grok-bui
 
 Project repository: [robbyjo/Grok-Studio](https://github.com/robbyjo/Grok-Studio). Development priorities are tracked in [TODO.md](TODO.md).
 
-**Current release: 0.3.0 alpha, Windows x64 portable.** Full Codex local workflow parity is not complete. Uses Electron, React, TypeScript, a native PowerShell terminal, and Grok's Agent Client Protocol (ACP). macOS and Linux are architectural targets, not validated releases.
+**Current release: 0.4.0 alpha, Windows x64 portable.** Full Codex local workflow parity is not complete. Uses Electron, React, TypeScript, a native PowerShell terminal, and Grok's Agent Client Protocol (ACP). macOS and Linux are architectural targets, not validated releases.
 
 ## Run on Windows
 
 Requirements: Windows 10/11 x64; Git for Git workflows; your project's development tools. The portable executable includes the official `grok 1.0.46` runtime. Grok sign-in and network access are needed for model-backed coding; this is not an offline model.
 
-1. Copy `release/Grok-Studio-0.3.0-Portable.exe` to a writable folder and double-click it. No installer or separate Electron/Node/Grok installation is needed to open the GUI. The executable extracts application files to a temporary directory while running.
+1. Copy `release/Grok-Studio-0.4.0-Portable.exe` to a writable folder and double-click it. No installer or separate Electron/Node/Grok installation is needed to open the GUI. The executable extracts application files to a temporary directory while running.
 2. Open a project. The default runtime selection is **bundled**. Open the integrated terminal and run `grok login` to authenticate the portable Grok profile.
 3. Send a prompt. Grok starts in the project's folder. Approval requests appear above the composer. “Stop turn” cancels the agent turn.
 4. To connect MCPs, open **Settings → MCP servers** in a project chat. Add a STDIO command with one argument per line, or a Streamable HTTP/SSE URL; choose user or project scope. Select **Test connection** to check handshake and tool discovery. After a configuration change, reconnect the chat to load the new configuration.
@@ -43,11 +43,11 @@ Run `npm run runtime` to obtain the pinned runtime for development, or use an ex
 - Up to five explicitly selected text attachments, 1 MiB per file.
 - Native interactive PowerShell terminal with input, resize, cancellation via Ctrl+C, and output history while the app is open.
 - File browser and UTF-8 editor for existing files up to 1 MiB; Ctrl+S, external-change detection, draft retention across files/chats and an unsaved-draft quit warning.
-- Per-file staged/unstaged Git diffs, stage/unstage and reviewed staged commits; status, branch and worktree list.
-- Create a new branch/worktree from current HEAD and start a chat there, preserving the original checkout's uncommitted changes.
+- Per-file staged/unstaged diffs, reviewed commits and text chunk actions; persistent local inline comments, clean-only branch controls and reviewed push. Optional GitHub CLI PR listing/draft publication.
+- Worktrees from a chosen branch/reference, attach and native conversation handoff, reviewed apply to a clean checkout, recoverable archive and restore.
 - MCP inventory, add, remove, enable/disable and connection diagnostics through Grok's native configuration commands; user/project scopes, environment variables and HTTP headers.
 
-Grok's native tools, MCP connections, skills, hooks, plugins, project instructions and permission policy stay owned by Grok. MCP GUI management is implemented for TOML server definitions. OAuth controls, resource/tool browsers, advanced policy editors, skill/plugin management and comprehensive subagent/task dashboards remain missing. See [the audited parity checklist](docs/PARITY.md); inherited runtime features are distinguished from tested GUI behavior.
+Settings now includes native MCP catalogs/tool policies, OAuth sign-in/status/local logout, skill/plugin/hook management, direct configuration/rules editing, reusable project actions, CLI session import/fork/checkpoints and worktree lifecycle controls. The official [GitHub OAuth integration](docs/GITHUB-MCP.md) passed a real identity check. Grok owns execution, scopes and managed policy. Resource reads use known URIs; this runtime exposes no MCP resource/prompt enumeration API to the desktop bridge. See [the audited parity checklist](docs/PARITY.md) for remaining gates and limits.
 
 ## Data and execution
 
@@ -57,7 +57,7 @@ The original `Grok Desktop Data` folder name is deliberately retained for compat
 
 The renderer has no Node access. A sandboxed, isolated preload exposes an allowlisted IPC bridge with sender validation. The file APIs canonicalize paths and rejects paths/symlinks outside the selected chat workspace. Markdown does not execute raw HTML or scripts. Remote pages cannot navigate the app; HTTP links open in the system browser.
 
-**Grok's OS-level agent sandbox is unavailable on Windows in the inspected upstream source.** Tool approvals are not a Windows filesystem sandbox. Configured Grok allow rules still apply. The interactive terminal executes as the signed-in Windows user. Project trust may enable project hooks/servers and is displayed separately from tool approval. The GUI never parses or copies Grok's credential files.
+**Grok's OS-level agent sandbox is unavailable on Windows in the inspected upstream source.** Tool approvals are not a Windows filesystem sandbox. Configured Grok allow rules still apply. The interactive terminal executes as the signed-in Windows user. Project trust may enable project hooks/servers and is displayed separately from tool approval. The GUI does not import account credentials automatically. Explicit HTTP MCP logout edits only the selected credential key; GitHub STDIO logout closes native processes and clears their memory-only tokens.
 
 Select **Files** to edit, save or reload a file. Reloading a changed draft requires an explicit discard choice. Saves reject stale content, Git metadata, external paths, hardlinks, binary files and invalid UTF-8. Saving and Git mutations reject active agent turns. Drafts are held in memory; crashes can lose them. Content hashes detect external changes before replacement, but this is not a cross-process filesystem lock.
 
@@ -65,7 +65,7 @@ Select **Search chats** or press **Ctrl+Shift+F** to search this desktop profile
 
 Use a project's **…** button to rename it or **Remove from sidebar**. Removal retains saved chats, archive/pin flags, files, worktrees and in-memory file drafts; it closes idle Grok connections and terminals, and refuses active turns. Restore through **Removed projects**, or reopen the same folder to reuse its original project identity and chats. This is a sidebar operation; it does not delete the project or its history. Removed projects are hidden at startup and new chats require restoration.
 
-Select **Changes** to inspect a file, stage/unstage it and **Review staged commit**. The review lists staged paths and their diff; enter a message and choose **Commit staged index**. A changed index requires another review. Commits require Git identity, may run repository hooks and refuse unresolved conflicts or staged files outside a selected nested workspace. The terminal and external tools can still change the workspace; stop other writers before committing. Git chunk actions, push/PR workflows, worktree deletion/apply and checkpoint rollback remain terminal or agent operations.
+Select **Changes** to inspect a file, stage/unstage it and **Review staged commit**. The review lists staged paths and their diff; enter a message and choose **Commit staged index**. A changed index requires another review. Commits require Git identity, may run repository hooks and refuse unresolved conflicts or staged files outside a selected nested workspace. The terminal and external tools can still change the workspace; stop other writers before committing. Tracked text modifications support reviewed stage/unstage/revert chunks and local inline comments. Settings provides clean-only branch switching, reviewed non-force push and GitHub CLI PR listing/draft creation. PR publication requires an explicit review and an installed, authenticated GitHub CLI. Worktree archive saves a Git recovery ref before removal; ignored files, submodules and embedded repositories block removal. Native rewind saves transcript/file recovery records before execution.
 
 ## Develop and verify
 
@@ -77,6 +77,8 @@ npm run build
 npm run test:ui       # launches Electron; isolated state and real Windows terminal
 npm run package:portable # preferred unsigned Windows x64 executable, runtime included
 npm run test:portable # actual portable launcher, profile relocation and embedded runtime
+ npm run test:live    # explicit real account/model acceptance; billable requests
+ npm run test:native-sessions # real CLI import/fork/rewind/handoff acceptance
 ```
 
 `npm ci` may require the explicit Electron installation step shown above because Electron 44 does not automatically download its runtime through an install script. Dependencies are locked in `package-lock.json`. Targeted overrides pin `@electron/get` and `shell-quote` to compatible patched versions used in validation.

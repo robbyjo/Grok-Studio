@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { GitState } from '../shared/types';
+import GitChunkReview from './GitChunkReview';
 
 function Diff({ text }: { text: string }) {
   return (
@@ -160,6 +161,16 @@ export default function GitChanges({
       </div>
       {selected && <small className="selected-diff-path">{selected}</small>}
       <Diff text={diff} />
+      {selected && (
+        <GitChunkReview
+          key={`${id}:${selected}:${staged}`}
+          id={id}
+          path={selected}
+          staged={staged}
+          busy={busy || working}
+          refresh={refresh}
+        />
+      )}
       <div className="git-commit">
         <button
           disabled={busy || working || !indexed.length || git.files.some((file) => file.conflicted)}

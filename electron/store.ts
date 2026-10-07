@@ -32,6 +32,13 @@ export class Store {
     if (!thread) throw new Error('Chat not found.');
     return thread;
   }
+  saveRecovery(record: Wire): string {
+    const root = dirname(this.file) + '/recovery';
+    mkdirSync(root, { recursive: true });
+    const path = root + '/' + randomUUID() + '.json';
+    writeFileSync(path, JSON.stringify(record), { encoding: 'utf8', flag: 'wx' });
+    return path;
+  }
   project(id: string): Project {
     const project = this.state.projects.find((item) => item.id === id);
     if (!project) throw new Error('Project not found.');
@@ -82,7 +89,8 @@ export class Store {
       entries: [],
     };
     this.state.threads.unshift(thread);
-    this.touch();
+    // Publish metadata before the IPC reply selects a newly created chat.
+    this.flush();
     return thread;
   }
   touch() {

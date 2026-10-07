@@ -8,7 +8,7 @@ export function response(message, log) {
     case 'initialize':
       result = {
         protocolVersion: message.params.protocolVersion,
-        capabilities: { tools: {} },
+        capabilities: { tools: {}, resources: {}, prompts: {} },
         serverInfo: { name: 'desktop-mcp-fixture', version: '1.0' },
       };
       break;
@@ -26,6 +26,26 @@ export function response(message, log) {
       break;
     case 'tools/call':
       result = { content: [{ type: 'text', text: 'HELLO_FROM_MCP_FIXTURE' }] };
+      break;
+    case 'resources/list':
+      result = {
+        resources: [{ uri: 'fixture://hello', name: 'Fixture resource', mimeType: 'text/plain' }],
+      };
+      break;
+    case 'resources/read':
+      result = {
+        contents: [
+          { uri: message.params.uri, mimeType: 'text/plain', text: 'RESOURCE_FROM_MCP_FIXTURE' },
+        ],
+      };
+      break;
+    case 'prompts/list':
+      result = { prompts: [{ name: 'fixture_prompt', description: 'Fixture prompt' }] };
+      break;
+    case 'prompts/get':
+      result = {
+        messages: [{ role: 'user', content: { type: 'text', text: 'Fixture prompt contents' } }],
+      };
       break;
     case 'ping':
       result = {};

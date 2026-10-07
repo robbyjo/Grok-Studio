@@ -1,6 +1,6 @@
 {
   "name": "grok-studio",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Windows-first desktop client for Grok Build",
   "author": "Grok Studio contributors",
@@ -16,6 +16,9 @@
     "test:ui": "playwright test",
     "test:portable": "tsx scripts/smoke-portable.ts",
     "test:live": "tsx scripts/live-acceptance.ts --run",
+    "test:native-sessions": "tsx scripts/native-session-acceptance.ts --run",
+    "test:native-integrations": "tsx --test scripts/native-integrations-acceptance.ts",
+    "test:github-oauth": "tsx scripts/github-oauth-acceptance.ts --run",
     "test:remote": "tsx scripts/remote-portable.ts",
     "runtime": "node scripts/runtime.cjs",
     "package:portable": "npm run build && npm run runtime && npm run licenses && electron-builder --win portable --x64",
@@ -33,7 +36,8 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "smol-toml": "1.9.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",

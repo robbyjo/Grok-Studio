@@ -1531,6 +1531,9 @@ mark {
   width: 100%;
   font-size: 12px;
 }
+.modal input[type='checkbox'] {
+  width: auto;
+}
 .field-label {
   display: block;
   font-size: 11px;

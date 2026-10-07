@@ -31,3 +31,18 @@ export async function futurePath(path: string): Promise<string> {
     }
   }
 }
+
+export async function insideFuture(root: string, path: string) {
+  const canonicalRoot = await realpath(root),
+    target = await futurePath(resolve(canonicalRoot, path));
+  const rel = relative(canonicalRoot, target);
+  if (
+    !rel ||
+    rel === '..' ||
+    rel.startsWith('..' + sep) ||
+    isAbsolute(rel) ||
+    rel.split(sep).some((part) => part.toLowerCase() === '.git')
+  )
+    throw new Error('Path leaves this workspace or enters Git metadata.');
+  return target;
+}

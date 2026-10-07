@@ -24,18 +24,26 @@ Windows local coding workflows come first. The detailed capability/evidence matr
 
 ## Integration parity
 
-- [ ] MCP OAuth sign-in/status/logout GUI and provider acceptance.
-- [ ] Edit existing MCP definitions without dropping advanced fields; inspect sources and shadowing.
-- [ ] Inventory plugin/compat/managed MCP servers, tools/resources/prompts and per-tool policies.
-- [ ] Skill/plugin management: inventory, install/update/remove/enable, trust and scopes.
-- [ ] Instructions/rules/hooks editors and effective policy/source views.
-- [ ] Environment setup scripts and reusable project actions.
+- [x] MCP OAuth GUI controls and real official GitHub STDIO OAuth identity acceptance; server-managed memory-only logout. HTTP local credential forgetting is scoped and regression-tested.
+- [ ] Real client-managed HTTP OAuth provider sign-in/expiry/reconnect/logout acceptance; STDIO provider OAuth does not complete this distinct gate.
+- [x] Edit existing TOML/JSON MCP definitions with exact text/comment/advanced-field preservation, duplicate-source inspection and stale-content checks.
+- [x] Runtime effective MCP source/tool inventory and per-tool controls, including plugin/compat/managed provenance supplied by Grok.
+- [x] Real native MCP setup, per-tool disable/enable and known-URI resource read acceptance.
+- [ ] MCP resources/prompts enumeration. No enumeration extension is exposed by this runtime; GUI reports this limit.
+- [x] Skill/plugin management: inventory, registered skill paths, enable/disable, plugin install/update/remove and source/trust/scope review; real native fixture lifecycle passed.
+- [x] Git-backed plugin update/version acceptance with a real cloned disposable Git source, preserving its original source on uninstall.
+- [ ] Marketplace management and exhaustive managed-policy/compat-source acceptance.
+- [x] Existing instruction/rule/hook configuration editors, effective hook source/pinned-policy views and native hook registration/toggles; real native lifecycle passed.
+- [x] Real native Windows Stop-hook execution acceptance with a verified file marker.
+- [ ] Managed instructions/rules precedence across every ancestor/source.
+- [x] Explicit environment setup and reusable project actions: reviewed executable/argv/workspace, edit/remove, captured output and owned-process cancellation.
 
 ## Remaining local workflows
 
-- [ ] CLI session import, fork and checkpoint/rewind.
-- [ ] Worktree branch selection, attach/handoff/apply and recoverable archive.
-- [ ] Git chunk actions, inline review comments, branch/push and pull request integration.
+- [x] Real CLI session import/history, native fork and pre-prompt checkpoints with reviewed file/conversation rewind and recovery backups.
+- [x] Worktree branch/base selection, attach/native conversation handoff, reviewed apply to clean targets, recoverable archive and detached restore.
+- [x] Git stage/unstage/revert text chunks, local inline review comments, clean-only branch selection and reviewed non-force push.
+- [ ] Live GitHub CLI PR listing/draft publication acceptance. GUI integration exists; GitHub CLI is not installed on this machine. Comments remain local; remote review submission is not implemented.
 - [x] Literal phrase search across saved transcripts and chat metadata, archived/removed scope controls, matching-message navigation and bounded/cancellable results.
 - [x] Project rename, reversible sidebar removal and restore/reopen, preserving chats, files, worktrees and in-memory drafts; refuse removal during active turns.
 - [ ] Project pins/groups, bulk organization, indexed search/pagination, bounded history storage and sustained large-history acceptance.

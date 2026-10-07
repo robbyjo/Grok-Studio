@@ -79,6 +79,7 @@ async function main() {
   await mkdir(output, { recursive: true });
   // Only the selected Grok auth file is transferable. No desktop histories or other app profiles.
   let tunnel: ReturnType<typeof spawn> | undefined;
+  let launcher: ReturnType<typeof spawn> | undefined;
   let browser: Awaited<ReturnType<typeof chromium.connectOverCDP>> | undefined;
   let pid: number | undefined;
   const port = 20000 + Math.floor(Math.random() * 15000);
@@ -100,11 +101,33 @@ async function main() {
           `Move-Item -LiteralPath ${quote(root + '\\' + locations[0])} -Destination ${quote(folder)}`,
         );
       }
-      pid = Number(
-        await remote(
-          `Remove-Item Env:GROK_HOME,Env:GROK_DESKTOP_DATA_DIR,Env:XAI_API_KEY,Env:GROK_DEPLOYMENT_KEY -ErrorAction SilentlyContinue;$p=Start-Process -FilePath ${quote(folder + '\\' + exe)} -WorkingDirectory ${quote(folder)} -ArgumentList '--remote-debugging-port=${port}' -WindowStyle Hidden -PassThru;$p.Id`,
-        ),
+      // Keep this SSH session alive: Windows OpenSSH owns the launched app's job tree.
+      const launchScript = `$ErrorActionPreference='Stop';Remove-Item Env:GROK_HOME,Env:GROK_DESKTOP_DATA_DIR,Env:XAI_API_KEY,Env:GROK_DEPLOYMENT_KEY -ErrorAction SilentlyContinue;$p=Start-Process -FilePath ${quote(folder + '\\' + exe)} -WorkingDirectory ${quote(folder)} -ArgumentList '--remote-debugging-port=${port}' -WindowStyle Hidden -PassThru;Write-Output $p.Id;Wait-Process -Id $p.Id`;
+      launcher = spawn(
+        'ssh',
+        [
+          ...sshArgs,
+          host,
+          'powershell',
+          '-NoProfile',
+          '-NonInteractive',
+          '-EncodedCommand',
+          Buffer.from(launchScript, 'utf16le').toString('base64'),
+        ],
+        { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] },
       );
+      let launchOutput = '',
+        launchError = '';
+      launcher.stdout!.on('data', (chunk) => {
+        launchOutput += chunk;
+      });
+      launcher.stderr!.on('data', (chunk) => {
+        launchError = (launchError + chunk).slice(-2000);
+      });
+      for (let n = 0; n < 40 && !launchOutput.includes('\n') && launcher.exitCode === null; n++)
+        await sleep(250);
+      pid = Number(launchOutput.trim().split(/\s/)[0]);
+      assert.ok(Number.isSafeInteger(pid) && pid > 0, `Remote launcher failed: ${launchError}`);
       tunnel = spawn(
         'ssh',
         [
@@ -128,7 +151,10 @@ async function main() {
         } catch {}
         await sleep(500);
       }
-      assert.ok(ready, 'Remote portable application failed to launch.');
+      assert.ok(
+        ready,
+        `Remote portable application failed to launch (SSH exit ${launcher.exitCode}): ${launchError}`,
+      );
       browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
       const page = browser.contexts()[0].pages()[0];
       await page.waitForFunction(() => Boolean(window.desktop));
@@ -177,6 +203,9 @@ async function main() {
           await remote(
             `New-Item -ItemType Directory -Force -Path ${quote(info.grokHome)}|Out-Null`,
           );
+          if (!info.grokHome.toLowerCase().startsWith((root + '\\').toLowerCase()))
+            throw new Error('Credential destination leaves the isolated acceptance root.');
+          report.authFile = info.grokHome + '\\auth.json';
           await execute(
             'scp',
             [
@@ -186,7 +215,6 @@ async function main() {
             ],
             { windowsHide: true, timeout: 30000 },
           );
-          report.authFile = info.grokHome + '\\auth.json';
           await call('agent:connect', { id: 't' });
           await page.evaluate(() => {
             (window as any).remoteTurn = { done: false };
@@ -225,6 +253,8 @@ async function main() {
       await browser.close();
       browser = undefined;
       await sleep(3000);
+      launcher.kill();
+      launcher = undefined;
       tunnel.kill();
       tunnel = undefined;
       console.log(`REMOTE_PASS ${report.results.at(-1).name}`);
@@ -242,12 +272,25 @@ async function main() {
     // Stop only the launcher tree from this uniquely identified test directory, if still running.
     if (pid)
       await remote(
-        `$p=Get-Process -Id ${pid} -ErrorAction SilentlyContinue;if($p -and $p.Path -and $p.Path.StartsWith(${quote(root)},[StringComparison]::OrdinalIgnoreCase)){& taskkill /PID ${pid} /T /F|Out-Null}`,
+        `$p=Get-Process -Id ${pid} -ErrorAction SilentlyContinue;if($p -and $p.Path -and $p.Path.StartsWith(${quote(root + '\\')},[StringComparison]::OrdinalIgnoreCase)){& taskkill /PID ${pid} /T /F|Out-Null}`,
       ).catch(() => {});
-    if (report.authFile)
-      await remote(
-        `Remove-Item -LiteralPath ${quote(report.authFile)} -ErrorAction SilentlyContinue`,
-      ).catch(() => {});
+    if (report.authFile) {
+      try {
+        await remote(
+          `if(Test-Path -LiteralPath ${quote(report.authFile)}){Remove-Item -LiteralPath ${quote(report.authFile)} -Force};if(Test-Path -LiteralPath ${quote(report.authFile)}){throw 'Credential cleanup failed'}`,
+        );
+        report.credentialCleanupVerified = true;
+      } catch (error) {
+        report.credentialCleanupVerified = false;
+        report.results.push({
+          name: 'credential cleanup',
+          status: 'fail',
+          error: (error as Error).message,
+        });
+        process.exitCode = 1;
+      }
+    }
+    launcher?.kill();
     report.finishedAt = new Date().toISOString();
     await writeFile(resolve(output, 'report.json'), JSON.stringify(report, null, 2));
     console.log(`REMOTE_REPORT ${resolve(output, 'report.json')}`);

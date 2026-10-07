@@ -6,13 +6,19 @@ import { readFile, stat } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { Store } from './store';
 import { Agents } from './agent';
+import { Sessions } from './sessions';
+import { Integrations } from './integrations';
+import { Configuration } from './configuration';
+import { Actions } from './actions';
+import { Worktrees } from './worktrees';
+import { GitReview } from './git-review';
 import { Terminals } from './terminals';
 import { Mcp } from './mcp';
 import { openDocument, saveDocument } from './editor';
 import { changeIndex, commitIndex, fileDiff } from './git-actions';
 import { rendererUrlMatches } from './renderer-origin';
 import { searchTranscripts } from './search';
-import { bundledRuntime, desktopDataDirectory, runtimeExecutable } from './runtime';
+import { bundledRuntime, desktopDataDirectory, runtimeExecutable, grokProfile } from './runtime';
 import { createWorktree, directory, files, gitState, textFile } from './workspace';
 import type { Attachment, DesktopEvent, Wire } from '../shared/types';
 
@@ -21,6 +27,12 @@ const rendererFile = join(__dirname, '../../dist/index.html');
 let window: BrowserWindow;
 let store: Store;
 let agents: Agents;
+let sessions: Sessions;
+let integrations: Integrations;
+let configuration: Configuration;
+let actions: Actions;
+let worktrees: Worktrees;
+let gitReview: GitReview;
 let terminals: Terminals;
 let mcp: Mcp;
 let mcpMutation = false;
@@ -46,6 +58,29 @@ function trusted(frame: Electron.WebFrameMain | null) {
   );
 }
 async function dispatch(method: string, args: Wire) {
+  if (
+    actions?.running() &&
+    [
+      'agent:connect',
+      'agent:prompt',
+      'git:update',
+      'git:commit',
+      'files:save',
+      'configuration:save',
+      'sessions:rewind',
+      'integration:action',
+    ].includes(method)
+  )
+    throw new Error('Wait for or cancel the project action before changing workspace state.');
+  if (
+    (workspaceMutation || mcpMutation) &&
+    (method.startsWith('sessions:') ||
+      method.startsWith('integration:') ||
+      method.startsWith('configuration:') ||
+      method.startsWith('worktrees:') ||
+      method.startsWith('review:'))
+  )
+    throw new Error('Wait for the current configuration/workspace change.');
   if (
     mcpMutation &&
     [
@@ -73,6 +108,8 @@ async function dispatch(method: string, args: Wire) {
     throw new Error('Wait for the workspace change to finish.');
   const thread = () => store.thread(string(args.id, 'chat ID', 100));
   const mutate = async (operation: () => Promise<unknown>) => {
+    if (workspaceMutation || mcpMutation || actions?.running())
+      throw new Error('Wait for the active workspace operation.');
     if (
       store.state.threads.some((item) =>
         ['running', 'approval', 'connecting'].includes(item.status),
@@ -87,6 +124,153 @@ async function dispatch(method: string, args: Wire) {
     }
   };
   switch (method) {
+    case 'review:chunks':
+      return {
+        ...(await gitReview.chunks(
+          thread().id,
+          string(args.path, 'file path'),
+          args.staged === true,
+        )),
+        comments: thread().reviewComments ?? [],
+      };
+    case 'review:chunk':
+      return mutate(() =>
+        gitReview.chunk(thread().id, { ...args, path: string(args.path, 'file path') }),
+      );
+    case 'review:comment':
+      return gitReview.comment(thread().id, args);
+    case 'review:remove-comment':
+      return gitReview.removeComment(thread().id, string(args.commentId, 'comment ID', 100));
+    case 'review:branches':
+      return gitReview.branches(thread().id);
+    case 'review:branch':
+      if (dirtyDocuments) throw new Error('Save or discard drafts before switching branches.');
+      return mutate(async () => {
+        agents.shutdown();
+        return gitReview.branch(
+          thread().id,
+          string(args.name, 'branch', 150),
+          string(args.base ?? 'HEAD', 'base', 200),
+          args.existing === true,
+        );
+      });
+    case 'review:push-preview':
+      return gitReview.pushPreview(thread().id, string(args.remote, 'remote', 100));
+    case 'review:push':
+      return mutate(() =>
+        gitReview.push(
+          thread().id,
+          string(args.remote, 'remote', 100),
+          string(args.revision, 'push review', 64),
+        ),
+      );
+    case 'review:prs':
+      return gitReview.prs(thread().id);
+    case 'review:pr-preview':
+      return gitReview.prPreview(thread().id, args);
+    case 'review:pr-create':
+      return mutate(() => gitReview.createPr(thread().id, args));
+    case 'worktrees:list':
+      return worktrees.list(thread().id);
+    case 'worktrees:attach':
+      return mutate(async () =>
+        store.create(
+          thread().projectId,
+          await worktrees.selected(thread().id, string(args.path, 'worktree path')),
+        ),
+      );
+    case 'worktrees:handoff':
+      if (dirtyDocuments)
+        throw new Error('Save or discard editor drafts before moving the workspace.');
+      return mutate(async () => {
+        const target = await worktrees.selected(thread().id, string(args.path, 'worktree path'));
+        terminals.close(thread().id);
+        return sessions.handoff(thread().id, target);
+      });
+    case 'worktrees:preview':
+      return mutate(() =>
+        worktrees.previewApply(thread().id, string(args.path, 'target worktree')),
+      );
+    case 'worktrees:apply':
+      if (dirtyDocuments)
+        throw new Error('Save or discard drafts before applying worktree changes.');
+      return mutate(() =>
+        worktrees.apply(
+          thread().id,
+          string(args.path, 'target worktree'),
+          string(args.revision, 'apply review', 64),
+        ),
+      );
+    case 'worktrees:archive':
+      if (dirtyDocuments) throw new Error('Save or discard drafts before archiving.');
+      return mutate(async () => {
+        const item = thread();
+        for (const chat of store.state.threads.filter((chat) => chat.cwd === item.cwd)) {
+          agents.disconnect(chat.id);
+          terminals.close(chat.id);
+        }
+        return worktrees.archive(item.id);
+      });
+    case 'worktrees:restore':
+      return mutate(() =>
+        worktrees.restore(thread().id, string(args.archiveId, 'archive ID', 100)),
+      );
+    case 'actions:list':
+      return actions.list(thread().projectId);
+    case 'actions:save':
+      return mutate(async () => actions.save(thread().projectId, args));
+    case 'actions:remove':
+      return mutate(async () =>
+        actions.remove(thread().projectId, string(args.actionId, 'action ID', 100)),
+      );
+    case 'actions:preview':
+      return actions.preview(thread().id, string(args.actionId, 'action ID', 100));
+    case 'actions:run':
+      return mutate(() =>
+        actions.run(
+          thread().id,
+          string(args.actionId, 'action ID', 100),
+          string(args.revision, 'action review', 64),
+        ),
+      );
+    case 'actions:cancel':
+      return actions.cancel(string(args.runId, 'action run ID', 100));
+    case 'configuration:list':
+      return configuration.list(thread().cwd);
+    case 'configuration:open':
+      return configuration.open(string(args.sourceId, 'configuration source', 100));
+    case 'configuration:save':
+      return mutate(async () => {
+        const result = await configuration.save(
+          string(args.sourceId, 'configuration source', 100),
+          string(args.text, 'configuration text', 1024 * 1024),
+          string(args.revision, 'configuration revision', 64),
+        );
+        agents.shutdown();
+        return result;
+      });
+    case 'sessions:list':
+      return sessions.list(
+        thread().id,
+        args.cursor === undefined ? undefined : string(args.cursor, 'session cursor', 4000),
+      );
+    case 'sessions:import':
+      return mutate(() => sessions.import(thread().id, string(args.sessionId, 'session ID', 150)));
+    case 'sessions:fork':
+      return mutate(() => sessions.fork(thread().id));
+    case 'sessions:points':
+      return sessions.points(thread().id);
+    case 'sessions:preview':
+      return sessions.preview(thread().id, args.index, string(args.mode, 'rewind scope', 40));
+    case 'sessions:rewind':
+      if (dirtyDocuments) throw new Error('Save or discard editor drafts before rewinding.');
+      return mutate(() => sessions.rewind(thread().id, string(args.token, 'rewind review', 100)));
+    case 'integration:list':
+      return integrations.list(thread().id, string(args.kind, 'integration category', 20));
+    case 'integration:action':
+      return mutate(() =>
+        integrations.action(thread().id, string(args.kind, 'integration category', 20), args),
+      );
     case 'state':
       return store.state;
     case 'chats:search': {
@@ -293,12 +477,17 @@ async function dispatch(method: string, args: Wire) {
         defaultPath: join(item.cwd, '..', `grok-${Date.now()}`),
       });
       if (result.canceled || !result.filePath) return null;
-      const worktree = await createWorktree(
-        item.cwd,
-        result.filePath,
-        string(args.branch, 'branch', 150),
-      );
-      return store.create(item.projectId, worktree.path);
+      return mutate(async () => {
+        const worktree = await createWorktree(
+          item.cwd,
+          result.filePath,
+          string(args.branch, 'branch', 150),
+          string(args.base ?? 'HEAD', 'base reference', 200),
+          args.existing === true,
+        );
+        await worktrees.own(item.id, worktree.path);
+        return store.create(item.projectId, worktree.path);
+      });
     }
     case 'attachments:pick': {
       const result = await dialog.showOpenDialog(window, {
@@ -407,6 +596,7 @@ function createWindow() {
     agents.shutdown();
     terminals.shutdown();
     mcp.shutdown();
+    actions.shutdown();
     store.flush();
   });
   if (isDev) void window.loadURL('http://127.0.0.1:5173/');
@@ -426,6 +616,10 @@ if (process.env.PORTABLE_EXECUTABLE_DIR && !process.env.GROK_HOME) {
 }
 if (existsSync(bundledRuntime()))
   process.env.PATH = dirname(bundledRuntime()) + delimiter + (process.env.PATH ?? '');
+// Optional user-installed provider tools travel with the selected portable profile.
+const githubToolDirectory = join(grokProfile(), 'tools', 'github');
+if (existsSync(join(githubToolDirectory, 'github-mcp-server.exe')))
+  process.env.PATH = githubToolDirectory + delimiter + (process.env.PATH ?? '');
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', () => {
@@ -449,6 +643,12 @@ else {
     // Connections are process-local even when their last session metadata was saved.
     for (const item of store.state.threads) if (item.session) item.session.connected = false;
     agents = new Agents(store, emit);
+    sessions = new Sessions(agents, store);
+    integrations = new Integrations(agents, store);
+    configuration = new Configuration(grokProfile);
+    actions = new Actions(store);
+    worktrees = new Worktrees(store);
+    gitReview = new GitReview(store);
     terminals = new Terminals(emit);
     mcp = new Mcp(() => runtimeExecutable(store.state.settings.executable));
     ipcMain.handle('desktop:call', async (event, method: unknown, args: unknown) => {
@@ -470,6 +670,7 @@ else {
     agents?.shutdown();
     terminals?.shutdown();
     mcp?.shutdown();
+    actions?.shutdown();
     store?.flush();
   });
 }

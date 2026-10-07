@@ -1,5 +1,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { homedir } from 'node:os';
+export const grokProfile = () => process.env.GROK_HOME || join(homedir(), '.grok');
 
 export function desktopDataDirectory(env: NodeJS.ProcessEnv, appData?: string): string | undefined {
   return (

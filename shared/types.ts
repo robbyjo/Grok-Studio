@@ -5,6 +5,15 @@ export interface Project {
   name: string;
   path: string;
   hidden?: boolean;
+  actions?: ProjectAction[];
+}
+export interface ProjectAction {
+  id: string;
+  name: string;
+  command: string;
+  args: string[];
+  directory: string;
+  setup: boolean;
 }
 export interface SearchHit {
   threadId: string;
@@ -43,6 +52,15 @@ export interface Thread {
   entries: Entry[];
   session?: Wire;
   error?: string;
+  reviewComments?: Array<{
+    id: string;
+    path: string;
+    line: number;
+    side: string;
+    body: string;
+    revision: string;
+    staged: boolean;
+  }>;
 }
 export interface Settings {
   executable: string;
@@ -52,6 +70,7 @@ export interface State {
   projects: Project[];
   threads: Thread[];
   settings: Settings;
+  worktrees?: Array<{ id: string; repo: string; path: string; archived: boolean; ref?: string }>;
 }
 export interface Permission {
   id: string;

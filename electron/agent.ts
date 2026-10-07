@@ -5,6 +5,7 @@ import { Store } from './store';
 import { runtimeExecutable } from './runtime';
 import type { Attachment, DesktopEvent, Permission, Wire } from '../shared/types';
 import { version } from '../package.json';
+import { nativeMethods, extensionResult, publicAgent } from './native-extensions';
 
 interface Connection {
   rpc: RpcProcess;
@@ -139,7 +140,11 @@ export class Agents {
           this.store.touch();
           throw new Error(thread.error);
         }
-        thread.session = { ...thread.session, agent: connection.initialized, connected: false };
+        thread.session = {
+          ...thread.session,
+          agent: publicAgent(connection.initialized),
+          connected: false,
+        };
         this.store.touch();
         const defaultId = connection.initialized._meta?.defaultAuthMethodId;
         if (['cached_token', 'xai.api_key'].includes(defaultId))
@@ -163,7 +168,7 @@ export class Agents {
           throw new Error('Grok did not return a session ID.');
         thread.sessionId = result.sessionId;
       }
-      thread.session = { ...result, agent: connection.initialized, connected: true };
+      thread.session = { ...result, agent: publicAgent(connection.initialized), connected: true };
       thread.status = this.permissionsSnapshot().some((item) => item.threadId === id)
         ? 'approval'
         : 'idle';
@@ -300,6 +305,17 @@ export class Agents {
     else thread.session = { ...thread.session, configOptions: result.configOptions };
     this.store.touch();
   }
+  async native(id: string, method: string, params: Wire = {}) {
+    if (!nativeMethods.has(method)) throw new Error('Unsupported native operation.');
+    const thread = this.store.thread(id);
+    if (['running', 'approval', 'connecting'].includes(thread.status))
+      throw new Error('Stop the active operation first.');
+    await this.connect(id);
+    if (thread.status !== 'idle')
+      throw new Error('Resolve project trust before using this operation.');
+    const response = await this.connections.get(id)!.rpc.request(method, params, 180000);
+    return extensionResult(response);
+  }
   permissionsSnapshot() {
     return [...this.permissions.values()].map((item) => item.permission);
   }
@@ -370,5 +386,10 @@ export class Agents {
   }
   shutdown() {
     for (const id of this.connections.keys()) this.disconnect(id);
+  }
+  async shutdownAndWait() {
+    const processes = [...this.connections.values()].map((connection) => connection.rpc);
+    this.shutdown();
+    await Promise.all(processes.map((rpc) => rpc.waitForExit()));
   }
 }

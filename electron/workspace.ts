@@ -55,7 +55,13 @@ export async function gitState(root: string, retry = true): Promise<GitState> {
     indexRevision: after,
   };
 }
-export async function createWorktree(root: string, target: string, branch: string) {
+export async function createWorktree(
+  root: string,
+  target: string,
+  branch: string,
+  base = 'HEAD',
+  existing = false,
+) {
   if (!branch || branch.startsWith('-') || !/^[\w./-]+$/.test(branch))
     throw new Error('Enter a valid new Git branch name.');
   await git(root, ['check-ref-format', '--branch', branch]);
@@ -65,6 +71,14 @@ export async function createWorktree(root: string, target: string, branch: strin
   const rel = relative(repo, destination);
   if (!rel || (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel)))
     throw new Error('Choose a worktree folder outside the current checkout.');
-  await git(repo, ['worktree', 'add', '-b', branch, '--', destination, 'HEAD']);
+  const commit = (
+    await git(repo, ['rev-parse', '--verify', '--end-of-options', base + '^{commit}'])
+  ).trim();
+  await git(
+    repo,
+    existing
+      ? ['worktree', 'add', '--', destination, branch]
+      : ['worktree', 'add', '-b', branch, '--', destination, commit],
+  );
   return { path: await directory(destination), name: basename(destination) };
 }

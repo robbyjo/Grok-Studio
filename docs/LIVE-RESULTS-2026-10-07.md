@@ -1,6 +1,6 @@
 # Authenticated acceptance, 2026-10-07
 
-The source GUI passed the disposable-repository live suite using the selected portable Grok profile after browser OAuth sign-in. The runtime was bundled Grok 1.0.46 (2765805b9442). These are real account/model requests, not replayed ACP fixtures.
+The source GUI and the final 0.4.0 packaged executable passed the disposable-repository live suite using the selected portable Grok profile after browser OAuth sign-in. The runtime was bundled Grok 1.0.46 (2765805b9442). These are real account/model requests, not replayed ACP fixtures.
 
 | Scenario         | Observed result                                                                                                                                                                                                                                   |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -17,4 +17,12 @@ The initial runs exposed and reproduced three issues: vendor folder-trust callba
 
 Local raw evidence is intentionally ignored: `.test-data/live-c6p5ty/report.json` and its screenshot. The report contains the generated repository location, actual tool entries, permission selections, session ID, configuration and final diff. Credentials are excluded from committed evidence. Run `npm run test:live` explicitly to reproduce; it sends billable real requests and needs a signed-in selected profile. `GROK_STUDIO_LIVE_HOME` selects another profile; `GROK_STUDIO_LIVE_EXE` selects a packaged/portable executable.
 
-This source result does not certify a rebuilt portable artifact, account expiry/refresh, third-party MCP OAuth providers, a pristine Windows installation, or sustained concurrency. Second-machine testing is separate. DESKTOP's observed baseline is Windows 11 Pro, Git present, Node and Grok absent on PATH; its Windows-update reboot interrupted the initial remote attempt before transfer.
+The 0.4.0 packaged rerun's local report is `.test-data/live-JLsGvq/report.json`: real edit/test, exact one-time approve/reject, underlying-process cancellation, restart/context resume, model/effort changes and a model-backed MCP call all passed. Modes remained unavailable. Local portable launcher/relocation and second-machine checks passed separately for the recorded artifact in [VALIDATION.md](VALIDATION.md).
+
+`npm run test:native-sessions` separately created a genuine Grok CLI conversation and passed GUI-backend import/history replay, native fork, a real model edit followed by exact file restoration, conversation rewind and native handoff to another worktree. Evidence: `.test-data/native-sessions-7SK5Wg/report.json`.
+
+Authenticated native integration acceptance passed skill registration/toggles/removal; real Git-source plugin clone/update/version verification/disable/enable/uninstall; hook registration/toggles/removal and actual Windows Stop-hook execution; MCP setup, tool disable/enable and a real known-URI resource read. Evidence: `.test-data/native-integrations-VNU84G/report.json`. The account credential was copied only into a temporary local profile on GPU, then native shutdown and deletion were verified. These are native-runtime fixture integration tests with a real account prompt, not broad provider/managed-policy interoperability claims.
+
+The official external [GitHub OAuth provider](GITHUB-MCP.md) also passed real browser sign-in, authenticated identity verification through both backend and GUI, and confirmed connection clearing. Evidence: `.test-data/github-oauth-pPj49R/report.json`; only acceptance flags are recorded there.
+
+Account expiry/refresh, client-managed HTTP provider OAuth, a pristine Windows installation, cross-machine authentication and sustained concurrency remain open. DESKTOP's observed baseline is Windows 11 Pro, Git present, Node and Grok absent on PATH. Its fresh 0.4.0 portable launch, native PowerShell terminal, bundled runtime and relocation/profile persistence passed; no account credential was transferred.

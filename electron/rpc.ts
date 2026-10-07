@@ -22,6 +22,7 @@ export class RpcProcess extends EventEmitter {
   private nextId = 1;
   private buffer = '';
   private ended = false;
+  private exited: Promise<void>;
   constructor(executable: string, args: string[], cwd: string, env = process.env) {
     super();
     this.child = spawn(executable, args, {
@@ -30,6 +31,10 @@ export class RpcProcess extends EventEmitter {
       windowsHide: true,
       shell: false,
       stdio: 'pipe',
+    });
+    this.exited = new Promise((done) => {
+      this.child.once('close', () => done());
+      this.child.once('error', () => done());
     });
     this.child.stdout.setEncoding('utf8');
     this.child.stdout.on('data', (chunk: string) => this.consume(chunk));
@@ -131,5 +136,21 @@ export class RpcProcess extends EventEmitter {
         () => this.child.kill(),
       );
     } else this.child.kill();
+  }
+  async waitForExit() {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        this.exited,
+        new Promise<never>((_done, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('Native process shutdown did not finish.')),
+            10000,
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 }

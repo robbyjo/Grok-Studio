@@ -43,6 +43,12 @@ import type {
 import ChatSearch from './ChatSearch';
 import ProjectSettings from './ProjectSettings';
 import McpSettings from './McpSettings';
+import IntegrationSettings from './IntegrationSettings';
+import SessionTools from './SessionTools';
+import ConfigurationEditor from './ConfigurationEditor';
+import WorktreeTools from './WorktreeTools';
+import GitRepositoryTools from './GitRepositoryTools';
+import ProjectActions from './ProjectActions';
 import FileEditor, { type FileDraft } from './FileEditor';
 import GitChanges from './GitChanges';
 const TerminalPanel = lazy(() => import('./Terminal'));
@@ -246,6 +252,13 @@ export default function App() {
   const [terminal, setTerminal] = useState(false);
   const [worktree, setWorktree] = useState(false);
   const [branch, setBranch] = useState('');
+  const [baseRef, setBaseRef] = useState('HEAD');
+  const [existingBranch, setExistingBranch] = useState(false);
+  const [configurationDirty, setConfigurationDirty] = useState(false);
+  function closeSettings() {
+    if (configurationDirty && !window.confirm('Discard the unsaved configuration draft?')) return;
+    setSettings(false);
+  }
   const [rename, setRename] = useState(false);
   const [title, setTitle] = useState('');
   const end = useRef<HTMLDivElement>(null);
@@ -387,17 +400,19 @@ export default function App() {
     setPanelError('');
     setTerminal(false);
     stick.current = !searchHit;
-  }, [activeId]);
+  }, [activeId, thread?.cwd]);
   useEffect(() => {
     void refresh();
-  }, [activeId, tab, filePath]);
+  }, [activeId, thread?.id, thread?.cwd, tab, filePath]);
   useEffect(() => {
     void window.desktop
       ?.call('editor:dirty', {
-        count: Object.values(fileDrafts).filter((draft) => draft.text !== draft.savedText).length,
+        count:
+          Object.values(fileDrafts).filter((draft) => draft.text !== draft.savedText).length +
+          Number(configurationDirty),
       })
       .catch((reason) => setError(String(reason)));
-  }, [fileDrafts]);
+  }, [fileDrafts, configurationDirty]);
   useEffect(() => {
     if (stick.current) end.current?.scrollIntoView({ behavior: 'instant' });
   }, [thread?.entries, thread?.status]);
@@ -428,7 +443,7 @@ export default function App() {
         setSearch(true);
       }
       if (event.key === 'Escape') {
-        setSettings(false);
+        closeSettings();
         setWorktree(false);
         setRename(false);
         setSearch(false);
@@ -437,7 +452,7 @@ export default function App() {
     };
     window.addEventListener('keydown', keyboard);
     return () => window.removeEventListener('keydown', keyboard);
-  }, [project?.id]);
+  }, [project?.id, configurationDirty]);
   async function send() {
     if (busy || (!draft.trim() && !attached[draftKey]?.length)) return;
     let target = thread;
@@ -1203,7 +1218,7 @@ export default function App() {
         />
       )}
       {settings && (
-        <div className="modal-backdrop" onClick={() => setSettings(false)}>
+        <div className="modal-backdrop" onClick={() => closeSettings()}>
           <section
             className="modal settings-modal"
             role="dialog"
@@ -1219,7 +1234,7 @@ export default function App() {
               <button
                 className="icon-button"
                 aria-label="Close settings"
-                onClick={() => setSettings(false)}
+                onClick={() => closeSettings()}
               >
                 <X size={18} />
               </button>
@@ -1270,7 +1285,7 @@ export default function App() {
               {thread && (
                 <button
                   onClick={() => {
-                    setSettings(false);
+                    closeSettings();
                     setTerminal(true);
                   }}
                 >
@@ -1288,13 +1303,37 @@ export default function App() {
               </p>
             </div>
             <McpSettings thread={thread} />
+            <IntegrationSettings thread={thread} />
+            <ConfigurationEditor thread={thread} dirtyChanged={setConfigurationDirty} />
+            <ProjectActions thread={thread} />
+            {thread && <GitRepositoryTools key={thread.id} thread={thread} />}
+            {thread && (
+              <WorktreeTools
+                key={thread.id}
+                thread={thread}
+                select={(id) => {
+                  setActiveId(id);
+                  closeSettings();
+                }}
+              />
+            )}
+            {thread && (
+              <SessionTools
+                key={thread.id}
+                thread={thread}
+                select={(id) => {
+                  setActiveId(id);
+                  closeSettings();
+                }}
+              />
+            )}
             <div className="modal-actions">
-              <button onClick={() => setSettings(false)}>Cancel</button>
+              <button onClick={() => closeSettings()}>Cancel</button>
               <button
                 className="primary"
                 onClick={async () => {
                   const result = await action('settings:save', { executable });
-                  if (result) setSettings(false);
+                  if (result) closeSettings();
                 }}
               >
                 Save settings
@@ -1305,7 +1344,7 @@ export default function App() {
                 </button>
               )}
             </div>
-            <small className="muted">Grok Studio 0.3.0 · Independent client · Windows first</small>
+            <small className="muted">Grok Studio 0.4.0 · Independent client · Windows first</small>
           </section>
         </div>
       )}
@@ -1314,19 +1353,40 @@ export default function App() {
           <section className="modal" role="dialog" aria-label="Create worktree" aria-modal="true">
             <h2>Give this task its own workspace</h2>
             <p>
-              Create a new branch from this checkout’s current HEAD. Existing uncommitted changes
-              stay in the original checkout.
+              Create or select a branch from a chosen reference. Existing uncommitted changes stay
+              in the original checkout.
             </p>
             <label className="field-label" htmlFor="branch">
               New branch
             </label>
             <input id="branch" value={branch} onChange={(event) => setBranch(event.target.value)} />
+            <label>
+              Base reference{' '}
+              <input
+                value={baseRef}
+                disabled={existingBranch}
+                onChange={(event) => setBaseRef(event.target.value)}
+              />
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={existingBranch}
+                onChange={(event) => setExistingBranch(event.target.checked)}
+              />
+              Use an existing local branch
+            </label>
             <div className="modal-actions">
               <button onClick={() => setWorktree(false)}>Cancel</button>
               <button
                 className="primary"
                 onClick={async () => {
-                  const result = await action('git:worktree', { id: thread.id, branch });
+                  const result = await action('git:worktree', {
+                    id: thread.id,
+                    branch,
+                    base: baseRef,
+                    existing: existingBranch,
+                  });
                   if (result) {
                     setWorktree(false);
                     setActiveId(result.id);
