@@ -1,0 +1,10 @@
+node_modules
+dist
+dist-electron
+release
+upstream
+.runtime
+.test-data
+test-results
+package-lock.json
+DEPENDENCY-LICENSES.txt

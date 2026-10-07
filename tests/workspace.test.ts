@@ -1,0 +1,66 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, writeFile, mkdir, readFile, symlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createWorktree, files, git, gitState, inside, textFile } from '../electron/workspace';
+import { Store } from '../electron/store';
+test('file previews reject traversal, symlink escape, binary, and oversized files', async () => {
+  const folder = await mkdtemp(join(tmpdir(), 'grok-files-'));
+  const root = join(folder, 'project');
+  await mkdir(root);
+  await mkdir(join(root, 'src'));
+  await writeFile(join(root, 'hello.txt'), 'hello');
+  await writeFile(join(folder, 'private.txt'), 'outside');
+  await assert.rejects(inside(root, '../private.txt'), /leaves/);
+  await symlink(folder, join(root, 'escape'), process.platform === 'win32' ? 'junction' : 'dir');
+  await assert.rejects(inside(root, 'escape/private.txt'), /leaves/);
+  await writeFile(join(root, 'binary.bin'), Buffer.from([0, 1, 2]));
+  await assert.rejects(textFile(root, 'binary.bin'), /Binary/);
+  await writeFile(join(root, 'large.txt'), 'a'.repeat(1024 * 1024 + 1));
+  await assert.rejects(textFile(root, 'large.txt'), /1 MiB/);
+  assert.equal(await textFile(root, 'hello.txt'), 'hello');
+  assert.equal((await files(root, '.'))[0].directory, true);
+});
+test('Git status and both diffs include real edits; worktrees preserve dirty original', async () => {
+  const folder = await mkdtemp(join(tmpdir(), 'grok-git-'));
+  const root = join(folder, 'repo');
+  await mkdir(root);
+  await git(root, ['init']);
+  await git(root, ['config', 'core.autocrlf', 'false']);
+  await git(root, ['config', 'user.name', 'Fixture']);
+  await git(root, ['config', 'user.email', 'fixture@example.invalid']);
+  await writeFile(join(root, 'example.txt'), 'original\n');
+  await git(root, ['add', '.']);
+  await git(root, ['commit', '-m', 'fixture']);
+  await writeFile(join(root, 'example.txt'), 'staged\n');
+  await git(root, ['add', '.']);
+  await writeFile(join(root, 'example.txt'), 'unstaged\n');
+  await writeFile(join(root, 'untracked.txt'), 'new');
+  const state = await gitState(root);
+  assert.match(state.diff, /\+unstaged/);
+  assert.match(state.staged, /\+staged/);
+  assert.match(state.status, /untracked.txt/);
+  await assert.rejects(createWorktree(root, join(root, 'nested'), 'grok/nested'), /outside/);
+  await assert.rejects(createWorktree(root, join(folder, 'bad'), '-force'), /valid/);
+  const worktree = await createWorktree(root, join(folder, 'task with spaces'), 'grok/task');
+  assert.equal(await readFile(join(worktree.path, 'example.txt'), 'utf8'), 'original\n');
+  assert.equal(await readFile(join(root, 'example.txt'), 'utf8'), 'unstaged\n');
+  assert.match(await git(root, ['worktree', 'list']), /grok\/task/);
+  await assert.rejects(
+    createWorktree(root, join(folder, 'another'), 'grok/task'),
+    /already exists/,
+  );
+});
+test('state recovers active chats as interrupted and refuses corrupt data without overwriting', async () => {
+  const folder = await mkdtemp(join(tmpdir(), 'grok-store-'));
+  const file = join(folder, 'state.json');
+  const store = new Store(file);
+  const thread = store.create('p', folder);
+  thread.status = 'approval';
+  store.flush();
+  assert.equal(new Store(file).thread(thread.id).status, 'interrupted');
+  await writeFile(file, '{broken');
+  assert.throws(() => new Store(file), /Cannot read desktop state/);
+  assert.equal(await readFile(file, 'utf8'), '{broken');
+});

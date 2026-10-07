@@ -1,0 +1,5 @@
+* text=auto eol=lf
+*.cmd text eol=crlf
+# Preserve upstream notices byte-for-byte, including their original whitespace.
+resources/grok/* -text -whitespace
+DEPENDENCY-LICENSES.txt -whitespace

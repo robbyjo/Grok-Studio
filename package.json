@@ -1,0 +1,95 @@
+{
+  "name": "grok-desktop",
+  "version": "0.1.1",
+  "private": true,
+  "description": "Windows-first desktop client for Grok Build",
+  "author": "Grok Desktop contributors",
+  "license": "Apache-2.0",
+  "main": "dist-electron/electron/main.js",
+  "scripts": {
+    "dev": "npm run build:main && concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && electron . --dev\"",
+    "build:main": "tsc -p tsconfig.electron.json",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
+    "build": "npm run typecheck && vite build && npm run build:main",
+    "start": "electron .",
+    "test": "tsx --test tests/*.test.ts",
+    "test:ui": "playwright test",
+    "test:portable": "tsx scripts/smoke-portable.ts",
+    "runtime": "node scripts/runtime.cjs",
+    "package:portable": "npm run build && npm run runtime && npm run licenses && electron-builder --win portable --x64",
+    "package:win": "npm run build && npm run runtime && npm run licenses && electron-builder --win nsis --x64",
+    "package:dir": "npm run build && npm run runtime && npm run licenses && electron-builder --win --x64 --dir",
+    "licenses": "node scripts/licenses.cjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "@lydell/node-pty": "1.2.0-beta.15",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "lucide-react": "^0.577.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.0.0",
+    "concurrently": "^10.0.5",
+    "electron": "44.6.0",
+    "electron-builder": "^26.15.3",
+    "prettier": "^3.9.9",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vite": "8.3.3",
+    "wait-on": "^9.0.4"
+  },
+  "build": {
+    "appId": "dev.grokdesktop.app",
+    "productName": "Grok Desktop",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json",
+      "LICENSE",
+      "THIRD-PARTY-NOTICES.md",
+      "DEPENDENCY-LICENSES.txt"
+    ],
+    "asarUnpack": [
+      "node_modules/@lydell/**/*"
+    ],
+    "npmRebuild": false,
+    "extraResources": [
+      {
+        "from": ".runtime/grok.exe",
+        "to": "runtime/grok.exe"
+      },
+      {
+        "from": "resources/grok",
+        "to": "runtime/notices"
+      }
+    ],
+    "win": {
+      "target": "portable"
+    },
+    "portable": {
+      "artifactName": "Grok-Desktop-${version}-Portable.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
+  },
+  "overrides": {
+    "shell-quote": "1.12.0",
+    "@electron/get": "5.0.0"
+  }
+}

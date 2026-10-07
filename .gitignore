@@ -1,0 +1,16 @@
+node_modules/
+dist/
+dist-electron/
+release/
+upstream/
+.runtime/
+test-results/
+playwright-report/
+.test-data/
+*.log
+.env
+.env.*
+!.env.example
+Grok Desktop Data/
+Grok Studio Data/
+.grok/
