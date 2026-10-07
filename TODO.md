@@ -19,7 +19,7 @@ Windows local coding workflows come first. The detailed capability/evidence matr
 - [x] File-oriented Git changes: stage/unstage individual files, inspect their diffs and commit the staged index with a reviewable message; validate paths and handle conflicts/unborn repositories.
 - [x] Keep project branding consistent with Grok Studio while preserving existing desktop data paths.
 - [x] Add Windows CI for build, backend, native UI, packaged GUI and actual portable launch/relocation checks. Hosted-run outcome is recorded separately in VALIDATION.md.
-- [ ] Authenticate Grok and run a disposable-repository acceptance suite: real edit/test/approve/reject/cancel/resume, model/mode switches and a real MCP tool call. This requires account authentication; fixtures do not complete this gate.
+- [ ] Authenticate Grok and run a disposable-repository acceptance suite: real edit/test/approve/reject/cancel/resume, model/mode switches and a real MCP tool call. This requires account authentication; fixtures do not complete this gate. See [the live acceptance procedure](docs/LIVE-ACCEPTANCE.md).
 - [ ] Test portability on a clean Windows machine and cross-machine authentication behavior.
 
 ## Integration parity

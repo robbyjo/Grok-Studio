@@ -20,7 +20,8 @@ The portable alpha is unsigned. STDIO MCP servers can require separate tools suc
 Build from source with Node.js 22.12+ and npm:
 
 ```powershell
-cd E:\Projects\Grok-Build
+git clone https://github.com/robbyjo/Grok-Studio.git
+cd Grok-Studio
 npm ci
 node node_modules/electron/install.js
 npm run build
@@ -85,7 +86,7 @@ A protocol-only smoke test can use a separately downloaded Grok executable:
 node node_modules/tsx/dist/cli.mjs scripts/smoke-runtime.ts C:\path\to\grok.exe
 ```
 
-It uses an isolated Grok home and negotiates ACP without authenticating or sending any model prompt. Paid/model-backed behavior needs a signed-in account for live acceptance testing. See [validation evidence and remaining checks](docs/VALIDATION.md).
+It uses an isolated Grok home and negotiates ACP without authenticating or sending any model prompt. Paid/model-backed behavior needs a signed-in account for live acceptance testing. See [validation evidence and remaining checks](docs/VALIDATION.md) and the [authenticated acceptance procedure](docs/LIVE-ACCEPTANCE.md).
 
 ## Sources and licensing
 
