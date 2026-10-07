@@ -149,6 +149,7 @@ test('archive rejects embedded repositories and cannot remove the primary checko
   const { folder, root, store, thread } = await fixture();
   const manager = new Worktrees(store);
   await manager.own(thread.id, root);
+  if (process.platform === 'win32') thread.cwd = root.toUpperCase();
   await assert.rejects(manager.archive(thread.id), /primary/);
   const created = await createWorktree(root, join(folder, 'nested-fixture'), 'codex/nested');
   await manager.own(thread.id, created.path);

@@ -6,6 +6,10 @@ import { git, gitInput } from './git-runner';
 import { directory, futurePath } from './paths';
 import { Store } from './store';
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
+const pathKey = (path: string) => {
+  const absolute = resolve(path);
+  return process.platform === 'win32' ? absolute.toLowerCase() : absolute;
+};
 export async function common(root: string) {
   return realpath(resolve(root, (await git(root, ['rev-parse', '--git-common-dir'])).trim()));
 }
@@ -57,7 +61,7 @@ export class Worktrees {
     return {
       rows: await worktreeList(thread.cwd),
       archives: (this.store.state.worktrees ?? []).filter(
-        (item) => item.repo === repo && item.archived,
+        (item) => pathKey(item.repo) === pathKey(repo) && item.archived,
       ),
       branches: (
         await git(thread.cwd, [
@@ -77,8 +81,8 @@ export class Worktrees {
       rows = await worktreeList(thread.cwd);
     const target = await directory(path);
     if (
-      !rows.some((row) => resolve(row.path).toLowerCase() === target.toLowerCase()) ||
-      (await common(target)) !== (await common(thread.cwd))
+      !rows.some((row) => pathKey(row.path) === pathKey(target)) ||
+      pathKey(await common(target)) !== pathKey(await common(thread.cwd))
     )
       throw new Error('Choose an attached worktree from this repository.');
     return target;
@@ -92,7 +96,7 @@ export class Worktrees {
   async previewApply(id: string, targetPath: string) {
     const source = this.store.thread(id).cwd,
       target = await this.selected(id, targetPath);
-    if (source === target) throw new Error('Choose another worktree.');
+    if (pathKey(source) === pathKey(target)) throw new Error('Choose another worktree.');
     if ((await git(target, ['status', '--porcelain', '--untracked-files=all'])).trim())
       throw new Error('The target worktree must be clean before applying changes.');
     const base = (
@@ -144,11 +148,11 @@ export class Worktrees {
   async archive(id: string) {
     const thread = this.store.thread(id),
       record = this.store.state.worktrees?.find(
-        (item) => !item.archived && item.path === thread.cwd,
+        (item) => !item.archived && pathKey(item.path) === pathKey(thread.cwd),
       );
     if (!record) throw new Error('Only worktrees created by this desktop profile can be archived.');
     const rows = await worktreeList(thread.cwd);
-    if ((await directory(rows[0].path)).toLowerCase() === thread.cwd.toLowerCase())
+    if (pathKey(await directory(rows[0].path)) === pathKey(thread.cwd))
       throw new Error('The primary checkout cannot be archived.');
     if (/^160000 /m.test(await git(thread.cwd, ['ls-files', '--stage'])))
       throw new Error(
@@ -184,22 +188,25 @@ export class Worktrees {
     this.store.flush();
     await git(primary, ['worktree', 'remove', '--force', '--', record.path]);
     record.archived = true;
-    for (const item of this.store.state.threads.filter((item) => item.cwd === record.path))
+    for (const item of this.store.state.threads.filter(
+      (item) => pathKey(item.cwd) === pathKey(record.path),
+    ))
       item.archived = true;
     this.store.flush();
     const primaryPath = await directory(primary);
     const returnThread =
-      this.store.state.threads.find((item) => !item.archived && item.cwd === primaryPath) ??
-      this.store.create(thread.projectId, primaryPath);
+      this.store.state.threads.find(
+        (item) => !item.archived && pathKey(item.cwd) === pathKey(primaryPath),
+      ) ?? this.store.create(thread.projectId, primaryPath);
     return { ref, commit, path: record.path, returnThreadId: returnThread.id };
   }
   async restore(id: string, archiveId: string) {
     const thread = this.store.thread(id),
       record = this.store.state.worktrees?.find((item) => item.id === archiveId && item.archived);
-    if (!record || record.repo !== (await common(thread.cwd)) || !record.ref)
+    if (!record || pathKey(record.repo) !== pathKey(await common(thread.cwd)) || !record.ref)
       throw new Error('Choose an archive from this repository.');
     const path = await futurePath(record.path);
-    if (path.toLowerCase() !== record.path.toLowerCase())
+    if (pathKey(path) !== pathKey(record.path))
       throw new Error('The original archive path now resolves elsewhere.');
     await git(thread.cwd, ['worktree', 'add', '--detach', '--', path, record.ref]);
     record.archived = false;
