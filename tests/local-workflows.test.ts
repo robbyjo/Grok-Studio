@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, unlink, access } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, unlink, access, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Store } from '../electron/store';
@@ -151,6 +151,13 @@ test('archive rejects embedded repositories and cannot remove the primary checko
   await manager.own(thread.id, root);
   if (process.platform === 'win32') thread.cwd = root.toUpperCase();
   await assert.rejects(manager.archive(thread.id), /primary/);
+  if (process.platform === 'win32') {
+    const alias = join(folder, 'primary-junction');
+    await symlink(root, alias, 'junction');
+    thread.cwd = alias;
+    await assert.rejects(manager.archive(thread.id), /primary/);
+    thread.cwd = root;
+  }
   const created = await createWorktree(root, join(folder, 'nested-fixture'), 'codex/nested');
   await manager.own(thread.id, created.path);
   const task = store.create(thread.projectId, created.path);

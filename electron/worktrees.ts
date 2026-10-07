@@ -147,12 +147,13 @@ export class Worktrees {
   }
   async archive(id: string) {
     const thread = this.store.thread(id),
+      cwd = await directory(thread.cwd),
       record = this.store.state.worktrees?.find(
-        (item) => !item.archived && pathKey(item.path) === pathKey(thread.cwd),
+        (item) => !item.archived && pathKey(item.path) === pathKey(cwd),
       );
     if (!record) throw new Error('Only worktrees created by this desktop profile can be archived.');
     const rows = await worktreeList(thread.cwd);
-    if (pathKey(await directory(rows[0].path)) === pathKey(thread.cwd))
+    if (pathKey(await directory(rows[0].path)) === pathKey(cwd))
       throw new Error('The primary checkout cannot be archived.');
     if (/^160000 /m.test(await git(thread.cwd, ['ls-files', '--stage'])))
       throw new Error(
@@ -189,7 +190,7 @@ export class Worktrees {
     await git(primary, ['worktree', 'remove', '--force', '--', record.path]);
     record.archived = true;
     for (const item of this.store.state.threads.filter(
-      (item) => pathKey(item.cwd) === pathKey(record.path),
+      (item) => item.id === id || pathKey(item.cwd) === pathKey(record.path),
     ))
       item.archived = true;
     this.store.flush();
