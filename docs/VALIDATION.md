@@ -10,6 +10,8 @@ Real local OAuth acceptance verified Account and Settings dismissal, zero projec
 
 The unsigned **`Grok-Workbench-0.6.3-Portable.exe`** is **143,523,770 bytes**, SHA-256 **`d203b4b9a5c087623975f915d57113ab116598aa9a82396a907f7dea3c7b410d`**. Native engine hash and profile paths are unchanged. Portable evidence: `portable-account-completion.log`.
 
+[v0.6.3](https://github.com/robbyjo/Grok-Workbench/releases/tag/v0.6.3) was published as a Windows portable alpha prerelease on October 7, 2026 (America/New_York), from tested source `9b20eb5eb1c97b6c7f7d37a480c8384a0859a47b`. Both assets matched GitHub's server-computed SHA-256 digests before publication. Profiles are excluded. Hosted CI for this commit was still running at publication; it is not claimed as a 0.6.3 validation pass.
+
 ## 0.6.2 account sign-in and persistence
 
 The account circle/sign-in control is always visible directly above Settings, including with no project/chat. OAuth uses a separate short-lived native helper and the selected Grok profile, without creating sessions, prompting, trusting project configuration or running tools. Settings also always exposes the OAuth sign-in action. Native OAuth saving/refresh remains in the original authentication manager. API keys now default to Windows encrypted persistence; explicit session-only storage is still available. Saved API keys select API mode. Account display status is kept in memory and whitelisted to a sign-in flag/profile label; native credentials are not returned to the renderer or stored in desktop history/diagnostics.
