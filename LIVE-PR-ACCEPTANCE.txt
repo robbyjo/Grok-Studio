@@ -1,2 +1,2 @@
 Disposable Grok Workbench GUI draft publication acceptance. This branch is not intended to merge.
-Stale-head acceptance marker 697d0596-973c-442e-a51c-371c07f719e3.
+Stale-head acceptance marker 81518ee3-cb6f-428f-8854-6757f3d8b496.
