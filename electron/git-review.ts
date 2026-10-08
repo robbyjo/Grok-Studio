@@ -10,6 +10,7 @@ import { changes, indexRevision } from './git-actions';
 import { insideFuture } from './paths';
 import { openDocument } from './editor';
 import { Store } from './store';
+import { GitHubReviews } from './github-reviews';
 import type { Wire } from '../shared/types';
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const exec = promisify(execFile);
@@ -42,7 +43,14 @@ function hasLine(hunks: string[], side: string, target: number) {
   return false;
 }
 export class GitReview {
-  constructor(private store: Store) {}
+  readonly remoteReviews: GitHubReviews;
+  constructor(private store: Store) {
+    this.remoteReviews = new GitHubReviews(
+      store,
+      (id) => this.github(id),
+      (cwd, args) => this.gh(cwd, args),
+    );
+  }
   async chunks(id: string, path: string, staged: boolean) {
     const root = this.store.thread(id).cwd;
     await insideFuture(root, path);

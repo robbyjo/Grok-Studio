@@ -14,6 +14,8 @@ export class EmbeddedRpc extends EventEmitter {
   >();
   private sequence = 0;
   private ended = false;
+  private closing = false;
+  private stopped = false;
   private ready: Promise<void>;
   private exited: Promise<void>;
   private media = new Map<
@@ -41,7 +43,12 @@ export class EmbeddedRpc extends EventEmitter {
       (child as any).postMessage = (message: any) => child.send(message);
       this.child = child as unknown as Electron.UtilityProcess;
     }
-    this.exited = new Promise((resolve) => this.child.once('exit', () => resolve()));
+    this.exited = new Promise((resolve) =>
+      this.child.once('exit', () => {
+        this.stopped = true;
+        resolve();
+      }),
+    );
     this.ready = new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         reject(new Error('Embedded engine startup timed out.'));
@@ -169,6 +176,8 @@ export class EmbeddedRpc extends EventEmitter {
     this.emit('closed', error);
   }
   close() {
+    if (this.closing || this.stopped) return;
+    this.closing = true;
     this.finish(new Error('Connection stopped.'));
     const pid = this.child.pid;
     if (process.platform === 'win32' && pid)

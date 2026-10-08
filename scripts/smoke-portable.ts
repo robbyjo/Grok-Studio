@@ -1,7 +1,7 @@
 import { chromium, type Browser } from '@playwright/test';
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
 import { mkdir, mkdtemp, copyFile, writeFile, rename, readFile } from 'node:fs/promises';
-import { resolve, join, sep } from 'node:path';
+import { resolve, join, sep, basename } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
 import { createHash } from 'node:crypto';
@@ -9,7 +9,12 @@ import assert from 'node:assert/strict';
 
 async function main() {
   const meta = JSON.parse(await readFile('package.json', 'utf8'));
-  const executableName = `Grok-Workbench-${meta.version}-Portable.exe`;
+  const inputIndex = process.argv.indexOf('--exe');
+  const sourceExecutable =
+    inputIndex < 0
+      ? resolve('release', `Grok-Workbench-${meta.version}-Portable.exe`)
+      : resolve(process.argv[inputIndex + 1]);
+  const executableName = basename(sourceExecutable);
   await mkdir('.test-data', { recursive: true });
   const root = await mkdtemp(resolve('.test-data/portable-'));
   const first = join(root, 'Portable location with spaces');
@@ -33,7 +38,7 @@ async function main() {
   const project = join(root, 'project');
   await mkdir(project);
   await mkdir(join(first, 'Grok Desktop Data'), { recursive: true });
-  await copyFile(resolve('release', executableName), join(first, executableName));
+  await copyFile(sourceExecutable, join(first, executableName));
   const now = new Date().toISOString();
   await writeFile(
     join(first, 'Grok Desktop Data/state.json'),

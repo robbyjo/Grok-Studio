@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import type { Thread, Wire } from '../shared/types';
+import RemoteReview from './RemoteReview';
 export default function GitRepositoryTools({ thread }: { thread: Thread }) {
   const [catalog, setCatalog] = useState<Wire>(),
     [push, setPush] = useState<Wire>(),
     [pr, setPr] = useState<Wire>(),
     [prs, setPrs] = useState<Wire[]>([]);
+  const [reviewNumber, setReviewNumber] = useState<number>();
   const [name, setName] = useState('codex/'),
     [base, setBase] = useState('HEAD'),
     [existing, setExisting] = useState(false),
@@ -110,8 +112,19 @@ export default function GitRepositoryTools({ thread }: { thread: Thread }) {
           <small>
             {item.headRefName} → {item.baseRefName}
           </small>
+          <button disabled={busy} onClick={() => setReviewNumber(item.number)}>
+            Review PR #{item.number}
+          </button>
         </div>
       ))}
+      {reviewNumber && (
+        <RemoteReview
+          key={reviewNumber}
+          thread={thread}
+          number={reviewNumber}
+          close={() => setReviewNumber(undefined)}
+        />
+      )}
       <label>
         PR title
         <input

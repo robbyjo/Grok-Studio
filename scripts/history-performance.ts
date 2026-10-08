@@ -5,6 +5,9 @@ import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
 
 async function main() {
+  const durationIndex = process.argv.indexOf('--hours');
+  const durationMs = durationIndex < 0 ? 60000 : Number(process.argv[durationIndex + 1]) * 3600000;
+  assert.ok(Number.isFinite(durationMs) && durationMs >= 1000 && durationMs <= 86400000);
   mkdirSync('.test-data', { recursive: true });
   const root = mkdtempSync(resolve('.test-data/history-performance-'));
   const store = new Store(join(root, 'state.json'));
@@ -36,7 +39,8 @@ async function main() {
     flushMs: number[] = [];
   const began = performance.now();
   let cycles = 0;
-  while (performance.now() - began < 60000) {
+  let peakRssBytes = process.memoryUsage().rss;
+  while (performance.now() - began < durationMs) {
     const ts = performance.now();
     const result = await store.search('PERF_NEEDLE', {
       archived: true,
@@ -50,14 +54,21 @@ async function main() {
       store.update(
         `t${j}`,
         { sessionUpdate: 'agent_message_chunk', content: { text: 'stream chunk ' } },
-        `turn${cycles}`,
+        `turn${Math.floor(cycles / 100)}`,
       );
     store.flush();
     flushMs.push(performance.now() - fs);
     assert.ok(store.cacheStats().chats <= 8);
     assert.ok(store.cacheStats().entries <= 1600);
     assert.ok(Buffer.byteLength(JSON.stringify(store.snapshot())) < 1024 * 1024);
+    peakRssBytes = Math.max(peakRssBytes, process.memoryUsage().rss);
+    assert.ok(peakRssBytes < 1024 * 1024 * 1024, 'Storage soak exceeded 1 GiB RSS.');
+    // Bound the measurement buffers as well as the application's history cache.
+    if (searchMs.length > 4096) searchMs.shift();
+    if (flushMs.length > 4096) flushMs.shift();
     cycles++;
+    if (cycles % 100 === 0)
+      console.log(JSON.stringify({ cycles, elapsedMs: performance.now() - began, root }));
     await new Promise((r) => setTimeout(r, 30));
   }
   const percentile = (v: number[]) => [...v].sort((a, b) => a - b)[Math.floor(v.length * 0.95)];
@@ -75,6 +86,9 @@ async function main() {
     cache: store.cacheStats(),
     storage: store.history.stats(),
     rssBytes: process.memoryUsage().rss,
+    peakRssBytes,
+    requestedDurationMs: durationMs,
+    measurementWindow: 'latest 4096 cycles',
   };
   writeFileSync(join(root, 'result.json'), JSON.stringify(report, null, 2));
   store.cancelSearch();

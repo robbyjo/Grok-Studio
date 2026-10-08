@@ -27,6 +27,7 @@ export class RpcProcess extends EventEmitter {
   private nextId = 1;
   private buffer = '';
   private ended = false;
+  private closing = false;
   private exited: Promise<void>;
   constructor(executable: string, args: string[], cwd: string, env = process.env) {
     super();
@@ -132,8 +133,11 @@ export class RpcProcess extends EventEmitter {
     this.emit('closed', error);
   }
   close() {
+    if (this.closing) return;
+    this.closing = true;
     this.finish(new Error('Connection stopped.'));
     this.child.stdin.destroy();
+    if (this.child.exitCode !== null || this.child.signalCode !== null) return;
     // --no-leader ensures this is an app-owned process, not a shared agent.
     if (process.platform === 'win32' && this.child.pid) {
       spawn('taskkill.exe', ['/PID', String(this.child.pid), '/T', '/F'], { windowsHide: true }).on(

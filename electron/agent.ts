@@ -18,9 +18,12 @@ interface Connection {
 }
 export class Agents {
   canStart = () => true;
+  canConnect = () => true;
+  beforeWork = async () => {};
   private draining = new Set<string>();
   private connections = new Map<string, Connection>();
   private connecting = new Map<string, Promise<Wire>>();
+  private exiting = new Set<RpcClient>();
   private permissions = new Map<
     string,
     { permission: Permission; rpc: RpcClient; rpcId: string | number }
@@ -44,12 +47,17 @@ export class Agents {
           ),
   ) {}
   environment = () => process.env;
+  hasConnection(id: string) {
+    return this.connections.has(id);
+  }
   async mcp(id: string, input: Wire) {
     const rpc = this.connection(id).rpc as RpcClient & { mcp(input: Wire): Promise<any> };
     if (!rpc.mcp) throw new Error('The built-in MCP manager is unavailable.');
     return rpc.mcp(input);
   }
   async generate(id: string, input: Wire) {
+    await this.beforeWork();
+    if (!this.canStart()) throw new Error('Wait for the workspace or configuration operation.');
     await this.connect(id);
     const rpc = this.connections.get(id)?.rpc as RpcClient & {
       generate?: (input: Wire) => Promise<Uint8Array>;
@@ -61,6 +69,8 @@ export class Agents {
   private connection(id: string): Connection {
     const existing = this.connections.get(id);
     if (existing) return existing;
+    if (!this.canConnect())
+      throw new Error('Workbench is closing. No new native helper can start.');
     if (this.connections.size >= 8)
       throw new Error(
         'Up to eight Grok connections can run at once. Disconnect an idle chat first.',
@@ -261,6 +271,7 @@ export class Agents {
       throw new Error('Inline images exceed 12 MiB. Send fewer images in this prompt.');
     const thread = this.store.thread(id);
     this.store.assertCapacity();
+    await this.beforeWork();
     if (!this.canStart()) throw new Error('Wait for the workspace or configuration operation.');
     if (thread.archived || this.store.project(thread.projectId).hidden)
       throw new Error('Restore this chat and project before sending a prompt.');
@@ -614,7 +625,12 @@ export class Agents {
       this.connections.delete(id);
       clearTimeout(connection.cancelTimer);
       this.clearPermissions(id, true);
+      this.exiting.add(connection.rpc);
       connection.rpc.close();
+      void connection.rpc
+        .waitForExit()
+        .catch(() => {})
+        .finally(() => this.exiting.delete(connection.rpc));
     }
     const thread = this.store.thread(id);
     for (const row of thread.queue ?? []) row.state = 'paused';
@@ -632,11 +648,11 @@ export class Agents {
       connections: this.connections.size,
       pendingApprovals: this.permissions.size,
       draining: this.draining.size,
+      exiting: this.exiting.size,
     };
   }
   async shutdownAndWait() {
-    const processes = [...this.connections.values()].map((connection) => connection.rpc);
     this.shutdown();
-    await Promise.all(processes.map((rpc) => rpc.waitForExit()));
+    await Promise.all([...this.exiting].map((rpc) => rpc.waitForExit()));
   }
 }

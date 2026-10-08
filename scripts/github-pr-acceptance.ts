@@ -104,7 +104,13 @@ async function main() {
               .innerText()
           ).match(/https:\/\/github.com\/robbyjo\/Grok-Workbench\/pull\/\d+/)![0];
     const actual = JSON.parse(
-      github(['pr', 'view', url, '--json', 'url,isDraft,headRefName,baseRefName,title,body,state']),
+      github([
+        'pr',
+        'view',
+        url,
+        '--json',
+        'number,url,isDraft,headRefName,baseRefName,title,body,state',
+      ]),
     );
     assert.equal(actual.isDraft, true);
     assert.equal(actual.headRefName, branch);
@@ -113,11 +119,130 @@ async function main() {
     assert.equal(actual.body, body);
     await modal.getByRole('button', { name: 'List open pull requests', exact: true }).click();
     await expect(modal.getByRole('button', { name: new RegExp('Acceptance only') })).toBeVisible();
+    console.log(
+      JSON.stringify({
+        url,
+        branch,
+        root,
+        publication: 'pass',
+        cleanup: 'pending; attach before closing',
+      }),
+    );
+    let remoteReview;
+    if (process.argv.includes('--review')) {
+      const beforeReviews = JSON.parse(
+        github(['api', `repos/robbyjo/Grok-Workbench/pulls/${actual.number}/reviews`]),
+      ).length;
+      await modal.getByRole('button', { name: `Review PR #${actual.number}`, exact: true }).click();
+      const review = modal.getByRole('region', { name: `Remote review PR ${actual.number}` });
+      await review.getByRole('button', { name: 'Fetch remote PR diff', exact: true }).click();
+      await expect(review.getByLabel('Remote review file')).toBeVisible({ timeout: 30000 });
+      await review.getByLabel('Remote review file').selectOption('LIVE-PR-ACCEPTANCE.txt');
+      await review.getByLabel('Remote line number').fill('1');
+      await review
+        .getByLabel('Remote inline comment')
+        .fill('Disposable acceptance: this inline comment is bound to the published PR line.');
+      await review.getByRole('button', { name: 'Add remote comment draft', exact: true }).click();
+      await review
+        .getByLabel('Review summary')
+        .fill(
+          'Disposable acceptance: reviewed remote COMMENT submission; not a merge recommendation.',
+        );
+      await review.getByRole('button', { name: 'Review remote submission', exact: true }).click();
+      await expect(
+        review.getByRole('button', { name: 'Submit reviewed GitHub review', exact: true }),
+      ).toBeVisible({ timeout: 30000 });
+      // Move the real remote head after preview. Submission must stop before POST.
+      writeFileSync(
+        join(cwd, 'LIVE-PR-ACCEPTANCE.txt'),
+        'Disposable Grok Workbench GUI draft publication acceptance. This branch is not intended to merge.\nStale-head acceptance marker ' +
+          randomUUID() +
+          '.\n',
+      );
+      git(['add', 'LIVE-PR-ACCEPTANCE.txt']);
+      git(['commit', '-m', 'test: move disposable PR head after review preview']);
+      git(['push', 'origin', branch]);
+      const expectedHead = git(['rev-parse', 'HEAD']);
+      for (let i = 0; i < 30; i++) {
+        if (
+          JSON.parse(
+            github([
+              'api',
+              `repos/robbyjo/Grok-Workbench/pulls/${actual.number}`,
+              '-H',
+              'Cache-Control: no-cache',
+            ]),
+          ).head.sha === expectedHead
+        )
+          break;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      assert.equal(
+        JSON.parse(
+          github([
+            'api',
+            `repos/robbyjo/Grok-Workbench/pulls/${actual.number}`,
+            '-H',
+            'Cache-Control: no-cache',
+          ]),
+        ).head.sha,
+        expectedHead,
+        'Wait for GitHub to acknowledge the new PR head before testing the stale preview.',
+      );
+      await review
+        .getByRole('button', { name: 'Submit reviewed GitHub review', exact: true })
+        .click();
+      await expect(review.getByRole('alert')).toContainText('head or diff changed', {
+        timeout: 30000,
+      });
+      assert.equal(
+        JSON.parse(github(['api', `repos/robbyjo/Grok-Workbench/pulls/${actual.number}/reviews`]))
+          .length,
+        beforeReviews,
+      );
+      await review.getByRole('button', { name: 'Fetch remote PR diff', exact: true }).click();
+      await expect(review.getByRole('alert')).toHaveCount(0);
+      await expect(review.locator('code')).toHaveText(git(['rev-parse', 'HEAD']), {
+        timeout: 30000,
+      });
+      await review.getByRole('button', { name: 'Review remote submission', exact: true }).click();
+      await expect(
+        review.getByRole('button', { name: 'Submit reviewed GitHub review', exact: true }),
+      ).toBeVisible({ timeout: 30000 });
+      await review
+        .getByRole('button', { name: 'Submit reviewed GitHub review', exact: true })
+        .click();
+      await expect(
+        review.getByRole('button', { name: 'Open submitted review', exact: true }),
+      ).toBeVisible({ timeout: 30000 });
+      const reviews = JSON.parse(
+        github(['api', `repos/robbyjo/Grok-Workbench/pulls/${actual.number}/reviews`]),
+      );
+      assert.equal(reviews.length, beforeReviews + 1);
+      const submitted = reviews.at(-1);
+      assert.equal(submitted.state, 'COMMENTED');
+      assert.equal(submitted.commit_id, git(['rev-parse', 'HEAD']));
+      const comments = JSON.parse(
+        github(['api', `repos/robbyjo/Grok-Workbench/pulls/${actual.number}/comments`]),
+      ).filter((c: any) => c.pull_request_review_id === submitted.id);
+      assert.equal(comments.length, 1);
+      assert.equal(comments[0].path, 'LIVE-PR-ACCEPTANCE.txt');
+      assert.equal(comments[0].line, 1);
+      assert.equal(comments[0].side, 'RIGHT');
+      remoteReview = {
+        staleHeadRefused: true,
+        reviewId: submitted.id,
+        state: submitted.state,
+        inlineComments: comments.length,
+        commit: submitted.commit_id,
+        url: submitted.html_url,
+      };
+    }
     await page.screenshot({ path: join(root, 'publication.png') });
     writeFileSync(
       join(root, 'result.json'),
       JSON.stringify(
-        { testedAt: now, branch, head: git(['rev-parse', 'HEAD']), ...actual },
+        { testedAt: now, branch, head: git(['rev-parse', 'HEAD']), ...actual, remoteReview },
         null,
         2,
       ),
@@ -128,6 +253,7 @@ async function main() {
         url,
         branch,
         result: 'passed',
+        remoteReview,
         cleanup: 'pending; attach PR before closing it',
       }),
     );

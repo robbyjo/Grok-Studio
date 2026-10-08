@@ -66,6 +66,14 @@ jobs:
           npm run test:ui
       - name: Actual portable launch and relocation
         run: npm run test:portable
+      - name: Actual portable replacement, restart and rollback
+        run: |
+          # Same source/version, different compression: a private reviewed-download fixture.
+          # The release/manifest/download gates are covered separately by backend tests.
+          npx electron-builder --prepackaged release/win-unpacked --win portable --x64 --config.compression=store --config.directories.output=.test-data/update-twin --config.portable.artifactName=Workbench-Unreleased-Twin.exe --publish never
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $taskPortable = Get-ChildItem -LiteralPath release -Filter 'Grok-Workbench-*-Portable.exe' | Select-Object -First 1
+          npx tsx scripts/portable-update-acceptance.ts --run --current .test-data/update-twin/Workbench-Unreleased-Twin.exe --replacement $taskPortable.FullName
       - name: Record executable hash
         run: |
           Get-ChildItem -LiteralPath release -Filter 'Grok-Workbench-*-Portable.exe' | ForEach-Object {
@@ -79,6 +87,7 @@ jobs:
           path: |
             release/Grok-Workbench-*-Portable.exe
             release/Grok-Workbench-*-Portable.exe.sha256
+            release/Grok-Workbench-*-Portable.exe.manifest.json
           if-no-files-found: error
           compression-level: 0
           retention-days: 30
@@ -89,6 +98,7 @@ jobs:
           name: Windows-validation-${{ github.sha }}
           path: |
             .test-data/*.png
+            .test-data/portable-replacement-*/result.json
             test-results/
           include-hidden-files: true
           if-no-files-found: ignore

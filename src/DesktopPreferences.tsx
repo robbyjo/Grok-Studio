@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import type { State, Wire } from '../shared/types';
 import { defaultShortcuts } from '../shared/shortcuts';
+import StorageSettings from './StorageSettings';
+import UpdateSettings from './UpdateSettings';
 export default function DesktopPreferences({ state }: { state: State }) {
   const [shortcuts, setShortcuts] = useState({ ...defaultShortcuts, ...state.settings.shortcuts }),
     [notifications, setNotifications] = useState(state.settings.notifications ?? false),
     [budget, setBudget] = useState(state.settings.storageMiB ?? 512),
+    [profileBudget, setProfileBudget] = useState(state.settings.profileMiB ?? 4096),
     [report, setReport] = useState<Wire>(),
     [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
@@ -42,6 +45,21 @@ export default function DesktopPreferences({ state }: { state: State }) {
         At the budget, new turns stop until you increase it or prune exported archived chats. Native
         Grok files and exported recovery files are managed separately.
       </p>
+      <label className="field-label">
+        Aggregate desktop and Grok profile budget (MiB)
+        <input
+          type="number"
+          min={256}
+          max={1048576}
+          value={profileBudget}
+          onChange={(e) => setProfileBudget(Number(e.target.value))}
+        />
+      </label>
+      <p className="muted">
+        New prompts, queued prompts, media generation and attachment imports stop at 90% of the
+        aggregate budget. Existing native processes may continue writing; this is an admission
+        limit, not a disk reservation.
+      </p>
       <h4>Keyboard shortcuts</h4>
       {Object.entries(shortcuts).map(([key, value]) => (
         <label className="field-label" key={key}>
@@ -60,6 +78,7 @@ export default function DesktopPreferences({ state }: { state: State }) {
               shortcuts,
               notifications,
               storageMiB: budget,
+              profileMiB: profileBudget,
             });
             setNotice('Desktop preferences saved.');
             setError('');
@@ -74,6 +93,8 @@ export default function DesktopPreferences({ state }: { state: State }) {
       {notice && <p role="status">{notice}</p>}
       {error && <p role="alert">{error}</p>}
       <h3>Diagnostics and storage</h3>
+      <StorageSettings state={state} />
+      <UpdateSettings />
       <button onClick={() => void inspect()}>Refresh diagnostics</button>
       {report && (
         <>

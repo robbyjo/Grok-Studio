@@ -21,7 +21,8 @@ Windows local coding workflows come first. The detailed capability/evidence matr
 - [x] Keep project branding consistent with Grok Workbench while preserving existing desktop data paths.
 - [x] Add Windows CI for build, backend, native UI, packaged GUI and actual portable launch/relocation checks. Hosted-run outcome is recorded separately in VALIDATION.md.
 - [x] Authenticate Grok and run the source and final 0.6.0 packaged GUI disposable-repository acceptance suite: real edit/test/approve/reject/cancel/resume, model/effort switches and a real MCP call. Modes were not advertised by this runtime. See [current validation](docs/VALIDATION.md) and [earlier observed live results](docs/LIVE-RESULTS-2026-10-07.md).
-- [ ] Test portability on a clean Windows machine and cross-machine authentication behavior.
+- [x] Fresh-profile portable launch/PowerShell/native inventory, relocation and persistence on USER-PC over SSH; no live credentials transferred. USER-PC already has Git/Grok, so this is existing-machine evidence.
+- [ ] Dependency-free/pristine Windows acceptance and fresh cross-machine OAuth sign-in/model/restart acceptance.
 
 ## Integration parity
 
@@ -45,7 +46,7 @@ Windows local coding workflows come first. The detailed capability/evidence matr
 - [x] Worktree branch/base selection, attach/native conversation handoff, reviewed apply to clean targets, recoverable archive and detached restore.
 - [x] Git stage/unstage/revert text chunks, local inline review comments, clean-only branch selection and reviewed non-force push.
 - [x] Install/authenticate GitHub CLI and pass real GUI PR listing/reviewed draft publication acceptance. Disposable PR #1 was closed without merging and its branch deleted.
-- [ ] Remote review comment submission. Inline comments currently remain local.
+- [x] Remote PR diff/inline review drafts, head-bound preview and explicit COMMENT/APPROVE/REQUEST_CHANGES submission, bounded ledger and uncertain-outcome recovery. Real GUI COMMENT/inline acceptance passed on disposable PR #2, subsequently closed without merging and its branch deleted. Self-approval/request-changes are fixture-tested.
 - [x] Literal phrase search across saved transcripts and chat metadata, archived/removed scope controls, matching-message navigation and bounded/cancellable results.
 - [x] Project rename, reversible sidebar removal and restore/reopen, preserving chats, files, worktrees and in-memory drafts; refuse removal during active turns.
 - [x] Project pins/groups, bulk organization, indexed search/pagination and bounded history storage; 100,000-entry/500-chat acceptance with a 60-second concurrent simulated-stream run passed.
@@ -53,11 +54,16 @@ Windows local coding workflows come first. The detailed capability/evidence matr
 - [x] Multiple terminal tabs, shell selection, bounded persistent scrollback and explicit editable agent terminal context.
 - [x] Process-scoped usage/cost and available-context indicators, opt-in notifications, configurable shortcuts, keyboard focus and reduced-motion support.
 - [x] Diagnostics/log viewer, bounded log/history storage, durable drafts and real renderer crash/reload recovery; bounded concurrent history performance acceptance passed.
-- [ ] Multi-hour soak and eight real concurrent model sessions; the 60-second history run uses simulated streams.
-- [ ] Aggregate profile quota/native Grok session retention; current limits bound desktop history, media, scrollback and logs, not all upstream-managed caches/session files.
+- [x] Eight overlapping real OAuth model turns with distinct native session IDs; observed peak 8. This is separate from the simulated storage soak.
+- [ ] Multi-hour history/storage soak with eight simulated streams; actual two-hour run in progress.
+- [x] Aggregate profile inventory/admission budget and reviewed old, archived native session export/prune/hash restore; real native session OAuth resume passed. Budget is admission control, not an OS disk quota.
+- [x] Abrupt owned main-process termination/relaunch and interrupted SQLite transaction recovery; durable drafts, paused queues and no automatic agent restart verified. Physical power-loss/reboot remains outside this acceptance.
 - [ ] Full screen-reader/assistive-technology audit and provider-reported context-window validation; current account does not report context size.
-- [ ] Signing, runtime/update version gates and rollback.
-- [ ] Investigate actual Windows agent isolation; Grok's inspected OS sandbox is unavailable on Windows.
+- [x] Native engine revision/hash/ABI gates, manifest-bound portable download/replacement/binary rollback, retained-file cleanup and failed-worker recovery; Windows worker/PE regressions and actual portable exit/replacement/restart/rollback with GUI draft preservation passed. See [portable updates](docs/PORTABLE-UPDATES.md).
+- [x] Optional certificate/Azure signing build configuration, preflight and post-build signature/publisher verification. Azure is paid; no account/resource/billing signup was performed.
+- [ ] Actual trusted signing service/certificate build and published signed newer-version update/rollback/clean-machine trust acceptance.
+- [x] Investigate Windows agent isolation: real disposable AppContainer ACL/private-file/loopback probe passed and profile cleanup verified. See [investigation](docs/WINDOWS-ISOLATION.md).
+- [ ] Integrate an agent sandbox/broker and validate containment of all tools, hooks, terminals and descendants. The probe does not enable agent OS isolation.
 
 ## Later platform/scope work
 

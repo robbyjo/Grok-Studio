@@ -1,9 +1,9 @@
-import { chromium } from '@playwright/test';
+import { chromium, _electron as electron } from '@playwright/test';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomUUID, createHash } from 'node:crypto';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { resolve, basename } from 'node:path';
 import { version } from '../package.json';
 import assert from 'node:assert/strict';
 
@@ -11,8 +11,18 @@ const execute = promisify(execFile);
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 async function main() {
   const host = process.argv[2];
-  if (!host || !/^[\w.-]+$/.test(host) || !process.argv.includes('--run'))
-    throw new Error('Usage: tsx scripts/remote-portable.ts TRUSTED_HOST --run [--copy-auth].');
+  const option = (name: string) => {
+    const i = process.argv.indexOf(name);
+    return i < 0 ? undefined : process.argv[i + 1];
+  };
+  const sourceExe = resolve(option('--exe') ?? `release/Grok-Workbench-${version}-Portable.exe`);
+  const knownHosts = option('--known-hosts');
+  if (process.argv.includes('--copy-auth'))
+    throw new Error('Credential export is not supported. Sign in freshly on the target machine.');
+  if (!host || !/^(?:[\w][\w.-]*@)?[\w][\w.-]*$/.test(host) || !process.argv.includes('--run'))
+    throw new Error(
+      'Usage: tsx scripts/remote-portable.ts TRUSTED_HOST --run [--exe PATH] [--known-hosts PATH].',
+    );
   const sshArgs = [
     '-o',
     'BatchMode=yes',
@@ -20,6 +30,7 @@ async function main() {
     'StrictHostKeyChecking=yes',
     '-o',
     'ConnectTimeout=8',
+    ...(knownHosts ? ['-o', 'UserKnownHostsFile=' + resolve(knownHosts)] : []),
   ];
   const remote = async (script: string) => {
     const { stdout } = await execute(
@@ -52,14 +63,14 @@ async function main() {
   if (!/^[A-Za-z]:\\/.test(root) || !root.endsWith(token))
     throw new Error('Unexpected remote acceptance path.');
   const quote = (value: string) => "'" + value.replaceAll("'", "''") + "'";
-  const exe = `Grok-Workbench-${version}-Portable.exe`;
-  await execute(
-    'scp',
-    [...sshArgs, resolve('release', exe), `${host}:${root.replaceAll('\\', '/')}/${exe}`],
-    { windowsHide: true, timeout: 180000 },
-  );
+  const exe = basename(sourceExe);
+  if (!/^[\w.-]+\.exe$/.test(exe)) throw new Error('Use a plain executable filename.');
+  await execute('scp', [...sshArgs, sourceExe, `${host}:${root.replaceAll('\\', '/')}/${exe}`], {
+    windowsHide: true,
+    timeout: 180000,
+  });
   const hash = createHash('sha256')
-    .update(await readFile(resolve('release', exe)))
+    .update(await readFile(sourceExe))
     .digest('hex');
   assert.equal(
     (
@@ -69,6 +80,9 @@ async function main() {
   );
   const report: any = {
     version,
+    sourceExecutable: basename(sourceExe),
+    liveCredentialTransfer: false,
+    fakeEncryptedKeyFixture: true,
     baseline,
     sha256: hash,
     startedAt: new Date().toISOString(),
@@ -77,7 +91,33 @@ async function main() {
   };
   const output = resolve('.test-data', `remote-${token}`);
   await mkdir(output, { recursive: true });
-  // Only the selected Grok auth file is transferable. No desktop histories or other app profiles.
+  // Generate a fake value in a new local profile. No real API/OAuth credential is read.
+  const localFixture = resolve(output, 'fake-key-profile');
+  const localApp = await electron.launch({
+    args: ['.'],
+    cwd: resolve('.'),
+    env: {
+      ...process.env,
+      GROK_DESKTOP_DATA_DIR: localFixture,
+      GROK_HOME: resolve(localFixture, 'grok'),
+      XAI_API_KEY: '',
+      GROK_CODE_XAI_API_KEY: '',
+    },
+  });
+  try {
+    const localPage = await localApp.firstWindow();
+    await localPage.evaluate(() =>
+      window.desktop.call('auth:save', {
+        key: 'FAKE_DPAPI_PORTABILITY_CANARY_NOT_A_REAL_API_KEY',
+        remember: true,
+      }),
+    );
+  } finally {
+    await localApp.close();
+  }
+  const fakeCipher = resolve(localFixture, 'xai-api-key.bin');
+  assert.ok(!(await readFile(fakeCipher)).includes(Buffer.from('FAKE_DPAPI')));
+  // Only the executable is copied. Both launches use a fresh, isolated profile.
   let tunnel: ReturnType<typeof spawn> | undefined;
   let launcher: ReturnType<typeof spawn> | undefined;
   let browser: Awaited<ReturnType<typeof chromium.connectOverCDP>> | undefined;
@@ -102,7 +142,7 @@ async function main() {
         );
       }
       // Keep this SSH session alive: Windows OpenSSH owns the launched app's job tree.
-      const launchScript = `$ErrorActionPreference='Stop';Remove-Item Env:GROK_HOME,Env:GROK_DESKTOP_DATA_DIR,Env:XAI_API_KEY,Env:GROK_DEPLOYMENT_KEY -ErrorAction SilentlyContinue;$p=Start-Process -FilePath ${quote(folder + '\\' + exe)} -WorkingDirectory ${quote(folder)} -ArgumentList '--remote-debugging-port=${port}' -WindowStyle Hidden -PassThru;Write-Output $p.Id;Wait-Process -Id $p.Id`;
+      const launchScript = `$ErrorActionPreference='Stop';Remove-Item Env:GROK_HOME,Env:GROK_DESKTOP_DATA_DIR,Env:XAI_API_KEY,Env:GROK_DEPLOYMENT_KEY,Env:GROK_CODE_XAI_API_KEY -ErrorAction SilentlyContinue;$p=Start-Process -FilePath ${quote(folder + '\\' + exe)} -WorkingDirectory ${quote(folder)} -ArgumentList '--remote-debugging-port=${port}' -WindowStyle Hidden -PassThru;Write-Output $p.Id;Wait-Process -Id $p.Id`;
       launcher = spawn(
         'ssh',
         [
@@ -170,6 +210,31 @@ async function main() {
         info.grokHome.toLowerCase(),
         (folder + '\\Grok Desktop Data\\grok').toLowerCase(),
       );
+      if (i === 0) {
+        await call('agent:disconnect', { id: 't' });
+        const remoteCipher = info.dataDirectory + '\\xai-api-key.bin';
+        assert.equal(await remote(`Test-Path -LiteralPath ${quote(remoteCipher)}`), 'False');
+        await execute(
+          'scp',
+          [...sshArgs, fakeCipher, `${host}:${remoteCipher.replaceAll('\\', '/')}`],
+          { windowsHide: true, timeout: 30000 },
+        );
+        await call('auth:mode', { mode: 'api' });
+        const error = await page.evaluate(() =>
+          window.desktop.call('agent:connect', { id: 't' }).then(
+            () => '',
+            (e) => String(e),
+          ),
+        );
+        assert.match(error, /cannot be decrypted on this Windows account\/machine/);
+        await call('auth:forget');
+        await call('auth:mode', { mode: 'oauth' });
+        assert.equal(await remote(`Test-Path -LiteralPath ${quote(remoteCipher)}`), 'False');
+        report.results.push({
+          name: 'fake DPAPI key copied across machines refuses decryption with actionable guidance; copied fixture removed',
+          status: 'pass',
+        });
+      }
       await call('terminal:open', { id: 't' });
       await call('terminal:write', {
         id: 't',
@@ -188,75 +253,78 @@ async function main() {
       const fixture = await call('mcp:list', { id: 't' });
       assert.ok(Array.isArray(fixture));
       if (i === 0) {
-        assert.equal(state.threads[0].sessionId, undefined);
-        await call('thread:edit', { id: 't', title: 'Persisted on DESKTOP', pinned: true });
+        const server = root + '\\portable-mcp-fixture.ps1';
+        const text = `$ErrorActionPreference='Stop'
+while ($null -ne ($line=[Console]::ReadLine())) {
+  $message=$line|ConvertFrom-Json
+  if ($null -eq $message.id) { continue }
+  $result = switch ($message.method) {
+    'initialize' { @{protocolVersion=$message.params.protocolVersion;capabilities=@{tools=@{}};serverInfo=@{name='portable-powershell-fixture';version='1.0'}};break }
+    'tools/list' { @{tools=@(@{name='say_hello';description='Local acceptance greeting';inputSchema=@{type='object';properties=@{}}})};break }
+    'tools/call' { @{content=@(@{type='text';text='PORTABLE_MCP_OK'})};break }
+    default { @{} }
+  }
+  [Console]::WriteLine((@{jsonrpc='2.0';id=$message.id;result=$result}|ConvertTo-Json -Depth 15 -Compress))
+}`;
+        await remote(
+          `[IO.File]::WriteAllText(${quote(server)},[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${Buffer.from(text).toString('base64')}')),(New-Object Text.UTF8Encoding($false)))`,
+        );
+        await call('mcp:add', {
+          id: 't',
+          name: 'portablepowershell',
+          scope: 'user',
+          transport: 'stdio',
+          command: 'powershell.exe',
+          args: ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', server],
+        });
+        assert.equal(
+          (await call('mcp:doctor', { id: 't', name: 'portablepowershell' })).healthy_count,
+          1,
+        );
         report.results.push({
-          name: 'fresh portable launch and bundled runtime/PTY without Node or Grok',
+          name: 'native STDIO MCP initialize/tool inventory with Windows PowerShell; no external Node fixture dependency',
+          status: 'pass',
+        });
+        assert.equal(state.threads[0].sessionId, undefined);
+        await call('thread:edit', { id: 't', title: 'Persisted on remote Windows', pinned: true });
+        report.results.push({
+          name: 'fresh portable launch with embedded runtime and PowerShell PTY',
           status: 'pass',
         });
       } else {
-        assert.equal(state.threads[0].title, 'Persisted on DESKTOP');
+        assert.ok(fixture.some((s: any) => s.name === 'portablepowershell'));
+        assert.equal(
+          (await call('mcp:doctor', { id: 't', name: 'portablepowershell' })).healthy_count,
+          1,
+        );
+        assert.equal(state.threads[0].title, 'Persisted on remote Windows');
         assert.equal(state.threads[0].pinned, true);
         report.results.push({
           name: 'second-machine relocation and profile persistence',
           status: 'pass',
         });
-        if (process.argv.includes('--copy-auth')) {
-          await call('agent:disconnect', { id: 't' });
-          await remote(
-            `New-Item -ItemType Directory -Force -Path ${quote(info.grokHome)}|Out-Null`,
-          );
-          if (!info.grokHome.toLowerCase().startsWith((root + '\\').toLowerCase()))
-            throw new Error('Credential destination leaves the isolated acceptance root.');
-          report.authFile = info.grokHome + '\\auth.json';
-          await execute(
-            'scp',
-            [
-              ...sshArgs,
-              resolve('release/Grok Desktop Data/grok/auth.json'),
-              `${host}:${info.grokHome.replaceAll('\\', '/')}/auth.json`,
-            ],
-            { windowsHide: true, timeout: 30000 },
-          );
-          await call('agent:connect', { id: 't' });
-          await page.evaluate(() => {
-            (window as any).remoteTurn = { done: false };
-            void window.desktop
-              .call('agent:prompt', {
-                id: 't',
-                text: 'Do not use any tools or change files. Reply exactly CROSS_MACHINE_OK.',
-              })
-              .then(
-                () => {
-                  (window as any).remoteTurn.done = true;
-                },
-                (error) => {
-                  (window as any).remoteTurn = { done: true, error: String(error) };
-                },
-              );
-          });
-          await page.waitForFunction(() => (window as any).remoteTurn.done, undefined, {
-            timeout: 180000,
-          });
-          const result = await page.evaluate(() => (window as any).remoteTurn);
-          assert.equal(result.error, undefined);
-          assert.ok(
-            (await call('state')).threads[0].entries.some(
-              (entry: any) => entry.type === 'assistant' && entry.text.includes('CROSS_MACHINE_OK'),
-            ),
-          );
-          report.results.push({
-            name: 'copied selected Grok auth file authenticates real model on second machine',
-            status: 'pass',
-          });
-        }
       }
       await page.screenshot({ path: resolve(output, `launch-${i}.png`) });
       await page.close();
       await browser.close();
       browser = undefined;
-      await sleep(3000);
-      launcher.kill();
+      if (launcher.exitCode == null) {
+        await new Promise<void>((done, reject) => {
+          const timeout = setTimeout(
+            () =>
+              reject(
+                new Error(
+                  'Remote portable did not finish shutdown. Original test location retained.',
+                ),
+              ),
+            20000,
+          );
+          launcher!.once('close', () => {
+            clearTimeout(timeout);
+            done();
+          });
+        });
+      }
       launcher = undefined;
       tunnel.kill();
       tunnel = undefined;
@@ -277,22 +345,6 @@ async function main() {
       await remote(
         `$p=Get-Process -Id ${pid} -ErrorAction SilentlyContinue;if($p -and $p.Path -and $p.Path.StartsWith(${quote(root + '\\')},[StringComparison]::OrdinalIgnoreCase)){& taskkill /PID ${pid} /T /F|Out-Null}`,
       ).catch(() => {});
-    if (report.authFile) {
-      try {
-        await remote(
-          `if(Test-Path -LiteralPath ${quote(report.authFile)}){Remove-Item -LiteralPath ${quote(report.authFile)} -Force};if(Test-Path -LiteralPath ${quote(report.authFile)}){throw 'Credential cleanup failed'}`,
-        );
-        report.credentialCleanupVerified = true;
-      } catch (error) {
-        report.credentialCleanupVerified = false;
-        report.results.push({
-          name: 'credential cleanup',
-          status: 'fail',
-          error: (error as Error).message,
-        });
-        process.exitCode = 1;
-      }
-    }
     launcher?.kill();
     report.finishedAt = new Date().toISOString();
     await writeFile(resolve(output, 'report.json'), JSON.stringify(report, null, 2));

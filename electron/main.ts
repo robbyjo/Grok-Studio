@@ -1,9 +1,10 @@
 import { app, BrowserWindow, dialog, ipcMain, shell, Notification, protocol } from 'electron';
 import { basename, join, isAbsolute, dirname, delimiter } from 'node:path';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, lstatSync, openSync, closeSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { readFile, stat, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
+import { spawn, execFile } from 'node:child_process';
 import { Store } from './store';
 import { Agents } from './agent';
 import { Sessions } from './sessions';
@@ -12,6 +13,8 @@ import { Configuration } from './configuration';
 import { Actions } from './actions';
 import { Worktrees } from './worktrees';
 import { GitReview } from './git-review';
+import { ProfileStorage, profileBudget } from './profile-storage';
+import { PortableUpdates, fileHash } from './portable-update';
 import { Terminals } from './terminals';
 import { Mcp, addArguments } from './mcp';
 import { openDocument, saveDocument } from './editor';
@@ -44,6 +47,8 @@ let configuration: Configuration;
 let actions: Actions;
 let worktrees: Worktrees;
 let gitReview: GitReview;
+let profileStorage: ProfileStorage;
+let updates: PortableUpdates;
 let terminals: Terminals;
 let mcp: Mcp;
 let diagnostics: Diagnostics;
@@ -61,6 +66,7 @@ protocol.registerSchemesAsPrivileged([
 ]);
 let attentionAt = 0;
 let mcpMutation = false;
+let shuttingDown = false;
 let workspaceMutation = false;
 let dirtyDocuments = 0;
 let closing = false;
@@ -110,6 +116,24 @@ function trusted(frame: Electron.WebFrameMain | null) {
   );
 }
 async function dispatch(method: string, args: Wire) {
+  // Native inventories may start helpers directly rather than through agent:connect.
+  // Scan first, then re-evaluate the operation guards below before allowing startup.
+  if (
+    /^(mcp:|sessions:|integration:|privacy:)/.test(method) &&
+    (!agents.hasConnection(string(args.id, 'chat ID', 100)) ||
+      ['sessions:import', 'sessions:fork'].includes(method))
+  )
+    await profileStorage.assertCapacity(store.state.settings.profileMiB ?? 4096);
+  if (shuttingDown) throw new Error('Workbench is closing.');
+  if (
+    workspaceMutation &&
+    (/^(agent:|mcp:|integration:|sessions:|configuration:|privacy:|tasks:|auth:|storage:|updates:|organization:)/.test(
+      method,
+    ) ||
+      ['thread:edit', 'project:edit', 'preferences:save'].includes(method)) &&
+    !['agent:cancel', 'agent:disconnect', 'auth:cancel-sign-in'].includes(method)
+  )
+    throw new Error('Wait for the current workspace/profile operation.');
   if (
     accountMutation &&
     (/^(agent:|mcp:|integration:|sessions:|configuration:|privacy:|tasks:)/.test(method) ||
@@ -173,7 +197,13 @@ async function dispatch(method: string, args: Wire) {
     throw new Error('Wait for the workspace change to finish.');
   const thread = () => store.thread(string(args.id, 'chat ID', 100));
   const mutate = async (operation: () => Promise<unknown>) => {
-    if (workspaceMutation || mcpMutation || actions?.running())
+    if (
+      workspaceMutation ||
+      mcpMutation ||
+      actions?.running() ||
+      accountMutation ||
+      generating.size
+    )
       throw new Error('Wait for the active workspace operation.');
     if (
       store.state.threads.some((item) =>
@@ -230,6 +260,148 @@ async function dispatch(method: string, args: Wire) {
     }
     case 'history:prune':
       return mutate(async () => store.prune(args.ids, args.confirmed === true));
+    case 'storage:inspect':
+      return {
+        ...(await profileStorage.scan()),
+        budgetMiB: store.state.settings.profileMiB ?? 4096,
+      };
+    case 'storage:preview':
+      return profileStorage.preview(args.sessionIds, args.days);
+    case 'storage:prune':
+      return mutate(async () => {
+        if (args.confirmed !== true)
+          throw new Error('Confirm the reviewed native session export and pruning.');
+        const result = await dialog.showOpenDialog(window, {
+          title: 'Choose a native session export folder outside the profiles',
+          properties: ['openDirectory', 'createDirectory'],
+        });
+        if (result.canceled || !result.filePaths[0]) return null;
+        await agents.shutdownAndWait();
+        const pruned = await profileStorage.exportPrune(
+          string(args.revision, 'retention review', 64),
+          result.filePaths[0],
+        );
+        for (const item of store.state.threads.filter((t) =>
+          pruned.pruned.includes(t.sessionId ?? ''),
+        )) {
+          item.session = undefined;
+        }
+        store.flush();
+        return pruned;
+      });
+    case 'storage:restore':
+      return mutate(async () => {
+        const result = await dialog.showOpenDialog(window, {
+          title: 'Choose a Grok-session-export folder',
+          properties: ['openDirectory'],
+        });
+        if (result.canceled || !result.filePaths[0]) return null;
+        await agents.shutdownAndWait();
+        return profileStorage.restore(result.filePaths[0]);
+      });
+    case 'updates:status':
+      return updates.status();
+    case 'updates:discard':
+      return mutate(() => updates.discard(args.confirmed === true));
+    case 'updates:recover':
+      return mutate(() => updates.recover(args.confirmed === true));
+    case 'updates:check':
+      return updates.check(args.alpha === true);
+    case 'updates:stage':
+      return mutate(async () => {
+        await profileStorage.assertCapacity(store.state.settings.profileMiB ?? 4096);
+        return updates.stage(string(args.token, 'update review', 100), args.allowUnsigned === true);
+      });
+    case 'updates:apply':
+    case 'updates:rollback':
+      if (dirtyDocuments)
+        throw new Error('Save or discard editor drafts before replacing Workbench.');
+      return mutate(async () => {
+        const operation = method === 'updates:apply' ? 'apply' : 'rollback';
+        await agents.shutdownAndWait();
+        await account.shutdownAndWait();
+        terminals.shutdown();
+        store.flush();
+        const journal = await updates.prepare(operation, args.confirmed === true);
+        const worker = join(updates.root, 'portable-update-worker.ps1');
+        await writeFile(
+          worker,
+          await readFile(join(__dirname, '../../scripts/portable-update-worker.ps1')),
+        );
+        const logPath = join(updates.root, 'worker.log');
+        if (existsSync(logPath)) {
+          const info = lstatSync(logPath);
+          if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1)
+            throw new Error('Update worker log is linked or unsafe. Preserve it for repair.');
+        }
+        const log = openSync(logPath, 'w');
+        const launcher = app.isPackaged
+          ? join(process.resourcesPath, 'updater-launcher.exe')
+          : join(process.cwd(), '.runtime/updater-launcher.exe');
+        if (!existsSync(launcher)) {
+          closeSync(log);
+          throw new Error(
+            'Updater launcher is missing. Restore the complete package or build the native updater helper.',
+          );
+        }
+        const child = spawn(launcher, [worker, journal, logPath], {
+          cwd: updates.root,
+          // GUI bootstrap survives Node's kill-on-exit job and starts ordinary hidden PowerShell.
+          detached: true,
+          windowsHide: true,
+          stdio: ['ignore', log, log],
+          shell: false,
+        });
+        try {
+          await new Promise<void>((done, reject) => {
+            child.once('spawn', done);
+            child.once('error', reject);
+          });
+          const deadline = Date.now() + 15000;
+          let ready = false;
+          while (Date.now() < deadline) {
+            const state = await readFile(journal, 'utf8')
+              .then((text) => JSON.parse(text))
+              .catch(() => undefined);
+            if (
+              state?.state === 'repairRequired' ||
+              child.exitCode != null ||
+              child.signalCode != null
+            )
+              throw new Error(
+                'Update worker failed before exit. Original retained; inspect updates/worker.log and recover the journal.',
+              );
+            if (state?.workerReady === true && state.launcherPid === child.pid) {
+              ready = true;
+              break;
+            }
+            await new Promise((done) => setTimeout(done, 100));
+          }
+          if (!ready)
+            throw new Error(
+              'Update worker readiness timed out. Original retained; inspect updates/worker.log.',
+            );
+        } catch (error) {
+          if (child.pid && child.exitCode == null && child.signalCode == null)
+            await new Promise<void>((done) =>
+              execFile(
+                'taskkill.exe',
+                ['/PID', String(child.pid), '/T', '/F'],
+                { windowsHide: true },
+                () => {
+                  child.kill();
+                  done();
+                },
+              ),
+            );
+          throw error;
+        } finally {
+          closeSync(log);
+        }
+        child.unref();
+        setTimeout(() => app.quit(), 100);
+        return { quitting: true };
+      });
     case 'drafts:get':
       return store.history.value('drafts') ?? {};
     case 'drafts:save':
@@ -237,6 +409,9 @@ async function dispatch(method: string, args: Wire) {
     case 'preferences:save': {
       const shortcuts = validateShortcuts(args.shortcuts ?? store.state.settings.shortcuts ?? {});
       const budget = args.storageMiB ?? store.state.settings.storageMiB ?? 512;
+      const aggregate = profileBudget(args.profileMiB ?? store.state.settings.profileMiB ?? 4096);
+      if ((await profileStorage.scan()).bytes > aggregate * 1024 * 1024)
+        throw new Error('Choose an aggregate budget above current profile usage.');
       if (
         !Number.isInteger(budget) ||
         budget < 64 ||
@@ -251,6 +426,7 @@ async function dispatch(method: string, args: Wire) {
         ...store.state.settings,
         shortcuts,
         storageMiB: budget,
+        profileMiB: aggregate,
         notifications: args.notifications ?? store.state.settings.notifications,
       };
       store.flush();
@@ -270,6 +446,7 @@ async function dispatch(method: string, args: Wire) {
         recoveryNotice: store.state.recoveryNotice,
       };
     case 'agent:queue':
+      await profileStorage.assertCapacity(store.state.settings.profileMiB ?? 4096);
       return agents.queue(thread().id, string(args.text, 'queued prompt', 20000));
     case 'agent:queue-edit':
       return agents.editQueue(thread().id, args);
@@ -337,6 +514,12 @@ async function dispatch(method: string, args: Wire) {
       return gitReview.prPreview(thread().id, args);
     case 'review:pr-create':
       return mutate(() => gitReview.createPr(thread().id, args));
+    case 'review:remote-diff':
+      return gitReview.remoteReviews.inspect(thread().id, args.number);
+    case 'review:remote-preview':
+      return gitReview.remoteReviews.preview(thread().id, args);
+    case 'review:remote-submit':
+      return mutate(() => gitReview.remoteReviews.submit(thread().id, args));
     case 'worktrees:list':
       return worktrees.list(thread().id);
     case 'worktrees:attach':
@@ -730,6 +913,8 @@ async function dispatch(method: string, args: Wire) {
       return item;
     }
     case 'agent:connect':
+      await profileStorage.assertCapacity(store.state.settings.profileMiB ?? 4096);
+      if (!agents.canStart()) throw new Error('Wait for the current workspace/profile operation.');
       return agents.connect(thread().id);
     case 'agent:disconnect':
       return agents.disconnect(thread().id);
@@ -855,6 +1040,7 @@ async function dispatch(method: string, args: Wire) {
       });
     }
     case 'attachments:pick': {
+      await profileStorage.assertCapacity(store.state.settings.profileMiB ?? 4096);
       const result = await dialog.showOpenDialog(window, {
         title: 'Attach files (up to five, 50 MiB each)',
         properties: ['openFile', 'multiSelections'],
@@ -1033,6 +1219,19 @@ else {
       store.flush();
     }
     agents = new Agents(store, emit);
+    profileStorage = new ProfileStorage(
+      app.getPath('userData'),
+      grokProfile(),
+      () => store.state.threads,
+    );
+    updates = new PortableUpdates(
+      join(app.getPath('userData'), 'updates'),
+      process.env.PORTABLE_EXECUTABLE_FILE,
+      app.getVersion(),
+      () => fileHash(embeddedEngine()),
+    );
+    agents.beforeWork = () =>
+      profileStorage.assertCapacity(store.state.settings.profileMiB ?? 4096);
     store.storageFault = () => agents.shutdown();
     credentials = new Credentials(app.getPath('userData'));
     const accountDirectory = join(app.getPath('userData'), 'account');
@@ -1049,8 +1248,13 @@ else {
     media = new Media(join(app.getPath('userData'), 'media-files'), store.history);
     protocol.handle('grok-media', (request) => media.response(request));
     agents.environment = () => credentials.environment(store.state.settings.authMode ?? 'auto');
+    agents.canConnect = () => !shuttingDown;
     agents.canStart = () =>
-      !accountMutation && !workspaceMutation && !mcpMutation && !actions?.running();
+      !shuttingDown &&
+      !accountMutation &&
+      !workspaceMutation &&
+      !mcpMutation &&
+      !actions?.running();
     sessions = new Sessions(agents, store);
     integrations = new Integrations(agents, store);
     configuration = new Configuration(grokProfile);
@@ -1109,12 +1313,12 @@ else {
   let shutdownFinished = false;
   let shutdownPending = false;
   app.on('will-quit', (event) => {
-    if (!shutdownFinished && account) {
+    if (!shutdownFinished && (account || agents)) {
       event.preventDefault();
       if (!shutdownPending) {
         shutdownPending = true;
-        void account
-          .shutdownAndWait()
+        shuttingDown = true;
+        void Promise.allSettled([account?.shutdownAndWait(), agents?.shutdownAndWait()])
           .finally(() => {
             shutdownFinished = true;
             // Windows may ignore a second quit while the first quit is unwinding.

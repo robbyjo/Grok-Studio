@@ -30,6 +30,14 @@ function setup(scenario = 'normal') {
   );
   return { folder, store, thread, agents, events };
 }
+test('shutdown admission refuses direct native helper startup, including MCP inspection', async () => {
+  const { agents, thread } = setup();
+  agents.canConnect = () => false;
+  await assert.rejects(agents.connect(thread.id), /closing/);
+  await assert.rejects(agents.mcp(thread.id, { operation: 'list' }), /closing/);
+  assert.equal(agents.stats().connections, 0);
+});
+
 test('ACP transport supports fragmented Unicode responses and structured errors', async () => {
   const rpc = new RpcProcess(process.execPath, [fixture], process.cwd());
   try {

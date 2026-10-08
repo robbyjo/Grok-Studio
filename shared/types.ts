@@ -77,6 +77,7 @@ export interface Settings {
   executable: string;
   authMode?: 'auto' | 'oauth' | 'api';
   storageMiB?: number;
+  profileMiB?: number;
   notifications?: boolean;
   shortcuts?: Record<string, string>;
 }
