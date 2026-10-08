@@ -8,6 +8,7 @@ Windows local coding workflows come first. The detailed capability/evidence matr
 - [x] ACP streams, tool activity, plans, runtime configuration and approval/trust UI.
 - [x] Cancellation, process cleanup, session-load fixtures and restart recovery.
 - [x] Real PowerShell terminal, file previews, Git diffs/status and worktree creation.
+- [x] Plain project folders without Git: explanatory Changes state, disabled Git controls and refresh after later initialization; source GUI/backend regression acceptance.
 - [x] MCP TOML inventory, add/remove/toggle and native STDIO/HTTP/SSE connection diagnostics.
 - [x] Portable Windows x64 executable with a built-in Grok library, adjacent profile/data and relocation tests; no separate Grok executable required.
 - [x] Source/dependency licensing, reproducible runtime hash and validation/parity documentation.

@@ -31,7 +31,25 @@ export async function textFile(root: string, path: string) {
   return text;
 }
 export async function gitState(root: string, retry = true): Promise<GitState> {
-  const before = await indexRevision(root);
+  let before: string;
+  try {
+    before = await indexRevision(root);
+  } catch (error) {
+    const stderr = (error as { stderr?: string }).stderr;
+    // A newly opened project need not use Git. Preserve other failures (missing
+    // Git, inaccessible folders, unsafe ownership, etc.) as genuine errors.
+    if (typeof stderr !== 'string' || !/^fatal: not a git repository\b/m.test(stderr)) throw error;
+    return {
+      isRepository: false,
+      branch: '',
+      status: '',
+      diff: '',
+      staged: '',
+      worktrees: '',
+      files: [],
+      indexRevision: '',
+    };
+  }
   const [branch, status, diff, staged, worktrees] = await Promise.all([
     git(root, ['branch', '--show-current']),
     git(root, ['status', '--short', '--', '.']),
@@ -46,6 +64,7 @@ export async function gitState(root: string, retry = true): Promise<GitState> {
     throw new Error('Git index changed during refresh; try again.');
   }
   return {
+    isRepository: true,
     branch: branch.trim() || '(detached HEAD)',
     status,
     diff,

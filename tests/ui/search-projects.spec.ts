@@ -1,10 +1,12 @@
 import { test, expect, _electron as electron, type ElectronApplication } from '@playwright/test';
 import { mkdir, mkdtemp, writeFile, readFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 test('native search jumps to messages and project removal retains files, drafts and chats across restart', async () => {
   await mkdir(resolve('.test-data'), { recursive: true });
-  const data = await mkdtemp(resolve('.test-data', 'organization-'));
+  // Keep this non-Git project outside the source checkout: Git discovers ancestor repos.
+  const data = await mkdtemp(join(tmpdir(), 'grok-organization-'));
   const project = join(data, 'project');
   await mkdir(project);
   await writeFile(join(project, 'draft.txt'), 'original\n');
@@ -73,6 +75,11 @@ test('native search jumps to messages and project removal retains files, drafts 
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     await expect(page.locator('.breadcrumbs')).toContainText('Search fixture');
+    await expect(
+      page.getByRole('status').filter({ hasText: 'Git hasn’t been set up' }),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Worktree', exact: true })).toBeDisabled();
+    await expect(page.locator('.panel-error')).toHaveCount(0);
     await page.keyboard.press('Control+Shift+f');
     const search = page.getByRole('dialog', { name: 'Search chats', exact: true });
     const query = search.getByLabel('Titles and full saved transcripts');

@@ -22,6 +22,22 @@ test('file previews reject traversal, symlink escape, binary, and oversized file
   assert.equal(await textFile(root, 'hello.txt'), 'hello');
   assert.equal((await files(root, '.'))[0].directory, true);
 });
+test('a new project without Git is usable and refresh detects later repository initialization', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'grok-no-git-'));
+  await writeFile(join(root, 'hello.txt'), 'new project');
+  const state = await gitState(root);
+  assert.equal(state.isRepository, false);
+  assert.equal(state.files.length, 0);
+  assert.equal(await textFile(root, 'hello.txt'), 'new project');
+  assert.ok(!(await files(root, '.')).some((file) => file.name === '.git'));
+  await assert.rejects(gitState(join(root, 'missing')));
+  await git(root, ['init', '-b', 'main']);
+  const initialized = await gitState(root);
+  assert.equal(initialized.isRepository, true);
+  assert.equal(initialized.branch, 'main');
+  assert.ok(initialized.files.some((file) => file.path === 'hello.txt' && file.index === '?'));
+});
+
 test('Git status and both diffs include real edits; worktrees preserve dirty original', async () => {
   const folder = await mkdtemp(join(tmpdir(), 'grok-git-'));
   const root = join(folder, 'repo');

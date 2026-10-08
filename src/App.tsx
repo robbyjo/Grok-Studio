@@ -1300,10 +1300,12 @@ export default function App() {
                       <div className="git-summary">
                         <span>
                           <GitBranch size={14} />
-                          {git?.branch ?? 'Git unavailable'}
+                          {git?.isRepository === false
+                            ? 'No Git repository'
+                            : (git?.branch ?? 'Git unavailable')}
                         </span>
                         <button
-                          disabled={busy || !git}
+                          disabled={busy || !git?.isRepository}
                           onClick={() => {
                             setBranch(`grok/task-${Date.now().toString(36)}`);
                             setWorktree(true);

@@ -2,6 +2,12 @@
 
 Validation performed on Windows x64 on October 6–7, 2026 (America/New_York). Current version: **Grok Workbench 0.6.3**, with the Grok Rust library embedded instead of a packaged CLI. Earlier sections retain historical version-specific names and results.
 
+## Unreleased source fix: projects without Git
+
+Opening a plain project folder returns an explicit non-repository state instead of surfacing Git's failed index lookup. Changes shows “Git hasn’t been set up for this project,” explains that chats/files/terminal remain available, and gives `git init`/open-repository guidance. Changes/commit controls are hidden and its Worktree action is disabled until Git exists. Refresh recognizes a repository initialized later, including one without commits. Other Git failures remain errors; the fix does not initialize a repository automatically.
+
+Build/typechecks, all **54 backend tests** and the source GUI search/project/edit/restart scenario passed. The GUI fixture is outside the source checkout so Git cannot discover the checkout's ancestor repository. The backend regression also checks continued file access and missing-folder failures. No new release, tag or distributable was created for this patch, as requested.
+
 ## 0.6.3 OAuth completion feedback
 
 Successful explicit OAuth sign-in closes the Account dialog or Settings. Saved-status inspection, API-key saves, failures and canceled sign-in do not trigger dismissal. Settings retains its unsaved-configuration guard: the confirmation states that Grok sign-in succeeded, and Cancel keeps the draft available for editing. The completion handler uses the latest parent callback so configuration changes made while authentication is pending are respected. Native authentication and credential persistence are unchanged.

@@ -111,6 +111,7 @@ export interface FileItem {
   directory: boolean;
 }
 export interface GitState {
+  isRepository: boolean;
   branch: string;
   status: string;
   diff: string;

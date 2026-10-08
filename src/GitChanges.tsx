@@ -86,6 +86,17 @@ export default function GitChanges({
     }
   }
   const indexed = git.files.filter((file) => ![' ', '?'].includes(file.index));
+  if (!git.isRepository)
+    return (
+      <div className="clean-state" role="status">
+        <h3>Git hasn’t been set up for this project.</h3>
+        <p>You can still use chats, edit files and run commands in the terminal.</p>
+        <p>
+          To enable changes, commits and worktrees, run <code>git init</code> in the project
+          terminal or open an existing Git repository, then refresh this view.
+        </p>
+      </div>
+    );
   return (
     <>
       {error && (
