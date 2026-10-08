@@ -1,6 +1,14 @@
 # Validation record
 
-Validation performed on Windows x64 on October 6–7, 2026 (America/New_York). Current version: **Grok Workbench 0.6.2**, with the Grok Rust library embedded instead of a packaged CLI. Earlier sections retain historical version-specific names and results.
+Validation performed on Windows x64 on October 6–7, 2026 (America/New_York). Current version: **Grok Workbench 0.6.3**, with the Grok Rust library embedded instead of a packaged CLI. Earlier sections retain historical version-specific names and results.
+
+## 0.6.3 OAuth completion feedback
+
+Successful explicit OAuth sign-in closes the Account dialog or Settings. Saved-status inspection, API-key saves, failures and canceled sign-in do not trigger dismissal. Settings retains its unsaved-configuration guard: the confirmation states that Grok sign-in succeeded, and Cancel keeps the draft available for editing. The completion handler uses the latest parent callback so configuration changes made while authentication is pending are respected. Native authentication and credential persistence are unchanged.
+
+Real local OAuth acceptance verified Account and Settings dismissal, zero project/chat creation and saved-login recognition after full restart (`live-account-8LpSb2/result.json`). The same acceptance passed in the final packaged app (`live-account-0dZp07/result.json`). Build/typechecks, formatting, all six packaged GUI scenarios and actual portable launch/native MCP/PowerShell/relocation passed. Native authentication/backend code is unchanged from the 53-test 0.6.2 backend acceptance; that count is not represented as a new 0.6.3 run.
+
+The unsigned **`Grok-Workbench-0.6.3-Portable.exe`** is **143,523,770 bytes**, SHA-256 **`d203b4b9a5c087623975f915d57113ab116598aa9a82396a907f7dea3c7b410d`**. Native engine hash and profile paths are unchanged. Portable evidence: `portable-account-completion.log`.
 
 ## 0.6.2 account sign-in and persistence
 

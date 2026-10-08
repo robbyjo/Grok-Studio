@@ -37,9 +37,17 @@ async function main() {
     await page.getByRole('button', { name: 'Account / sign in', exact: true }).click();
     const modal = page.getByRole('dialog', { name: 'Account', exact: true });
     await modal.getByRole('button', { name: 'Sign in with Grok (OAuth)', exact: true }).click();
-    await expect(modal.getByRole('status').filter({ hasText: 'Sign-in is saved.' })).toBeVisible({
+    await expect(modal).toBeHidden({
       timeout: 180000,
     });
+    await expect(
+      page.getByRole('button', { name: 'Account / sign in', exact: true }),
+    ).toContainText('Saved OAuth sign-in');
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    const settings = page.getByRole('dialog', { name: 'Settings', exact: true });
+    await expect(settings).toBeVisible();
+    await settings.getByRole('button', { name: 'Sign in with Grok (OAuth)', exact: true }).click();
+    await expect(settings).toBeHidden({ timeout: 180000 });
     let state = await page.evaluate(() => window.desktop.call('state'));
     if (state.projects.length || state.threads.length)
       throw new Error('Account sign-in created project/chat state.');
@@ -55,7 +63,14 @@ async function main() {
     writeFileSync(
       join(root, 'result.json'),
       JSON.stringify(
-        { oauthSignInWithoutProject: true, savedOAuthAfterRestart: true, projects: 0, chats: 0 },
+        {
+          oauthSignInWithoutProject: true,
+          accountDialogClosedOnSuccess: true,
+          settingsDialogClosedOnSuccess: true,
+          savedOAuthAfterRestart: true,
+          projects: 0,
+          chats: 0,
+        },
         null,
         2,
       ),

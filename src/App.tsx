@@ -279,8 +279,16 @@ export default function App() {
   const [baseRef, setBaseRef] = useState('HEAD');
   const [existingBranch, setExistingBranch] = useState(false);
   const [configurationDirty, setConfigurationDirty] = useState(false);
-  function closeSettings() {
-    if (configurationDirty && !window.confirm('Discard the unsaved configuration draft?')) return;
+  function closeSettings(signInSucceeded = false) {
+    if (
+      configurationDirty &&
+      !window.confirm(
+        signInSucceeded
+          ? 'Grok sign-in succeeded. Discard the unsaved configuration draft and close Settings? Cancel to keep editing.'
+          : 'Discard the unsaved configuration draft?',
+      )
+    )
+      return;
     setSettings(false);
   }
   const [rename, setRename] = useState(false);
@@ -1497,7 +1505,11 @@ export default function App() {
               </p>
             </div>
             <McpSettings thread={thread} />
-            <AuthenticationSettings state={state} thread={thread} />
+            <AuthenticationSettings
+              state={state}
+              thread={thread}
+              signedIn={() => closeSettings(true)}
+            />
             <IntegrationSettings thread={thread} />
             <ConfigurationEditor thread={thread} dirtyChanged={setConfigurationDirty} />
             <ProjectActions thread={thread} />
@@ -1541,7 +1553,7 @@ export default function App() {
               )}
             </div>
             <small className="muted">
-              Grok Workbench 0.6.2 · Independent client · Windows first
+              Grok Workbench 0.6.3 · Independent client · Windows first
             </small>
           </section>
         </div>

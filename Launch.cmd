@@ -1,8 +1,8 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-if exist "%~dp0release\Grok-Workbench-0.6.2-Portable.exe" (
-  start "" "%~dp0release\Grok-Workbench-0.6.2-Portable.exe"
+if exist "%~dp0release\Grok-Workbench-0.6.3-Portable.exe" (
+  start "" "%~dp0release\Grok-Workbench-0.6.3-Portable.exe"
   exit /b 0
 )
 if exist "%~dp0release\win-unpacked\Grok Workbench.exe" (

@@ -70,7 +70,11 @@ export default function AccountControl({ state }: { state: State }) {
                 <X size={18} />
               </button>
             </div>
-            <AuthenticationSettings state={state} updated={setStatus} />
+            <AuthenticationSettings
+              state={state}
+              updated={setStatus}
+              signedIn={() => setOpen(false)}
+            />
             <p className="muted">
               After signing in, open a project and send a prompt. Your login is shared by this
               portable profile's chats.

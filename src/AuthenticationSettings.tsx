@@ -1,14 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { State, Thread, Wire } from '../shared/types';
 export default function AuthenticationSettings({
   state,
   thread,
   updated,
+  signedIn,
 }: {
   state: State;
   thread?: Thread;
   updated?: (value: Wire) => void;
+  signedIn?: () => void;
 }) {
+  const completed = useRef(signedIn);
+  completed.current = signedIn;
   const [status, setStatus] = useState<Wire>(),
     [key, setKey] = useState(''),
     [remember, setRemember] = useState(true),
@@ -24,6 +28,11 @@ export default function AuthenticationSettings({
       const status = await window.desktop.call('auth:status');
       setStatus(status);
       updated?.(status);
+      if (
+        (method === 'auth:sign-in' && result?.account?.signedIn === true) ||
+        method === 'agent:authenticate'
+      )
+        completed.current?.();
       return result;
     } catch (e) {
       setError(String(e));
