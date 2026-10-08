@@ -17,9 +17,11 @@ export class Integrations {
   ) {}
   async list(id: string, kind: string) {
     const thread = this.store.thread(id);
-    if (!['mcp', 'skills', 'plugins', 'hooks'].includes(kind))
+    if (!['mcp', 'skills', 'plugins', 'hooks', 'instructions'].includes(kind))
       throw new Error('Choose a supported integration category.');
     await this.agents.connect(id);
+    if (kind === 'instructions')
+      return this.agents.native(id, '_x.ai/mcp/browse', { operation: 'instructions', server: '' });
     const result = await this.agents.native(id, `_x.ai/${kind}/list`, {
       sessionId: thread.sessionId,
       cwd: thread.cwd,
@@ -89,6 +91,26 @@ export class Integrations {
           server: server.name,
           uri: text(input.uri, 'resource URI'),
         });
+      if (['resources', 'templates', 'prompts', 'prompt'].includes(operation)) {
+        const argumentsValue = input.arguments ?? {};
+        if (
+          typeof argumentsValue !== 'object' ||
+          Array.isArray(argumentsValue) ||
+          Object.entries(argumentsValue).some(
+            ([key, value]) => key.length > 256 || typeof value !== 'string',
+          ) ||
+          JSON.stringify(argumentsValue).length > 16000
+        )
+          throw new Error('Invalid MCP prompt arguments.');
+        return this.agents.native(id, '_x.ai/mcp/browse', {
+          sessionId: thread.sessionId,
+          server: server.name,
+          operation,
+          cursor: input.cursor ? text(input.cursor, 'MCP cursor', 4096) : undefined,
+          name: operation === 'prompt' ? text(input.prompt, 'MCP prompt', 256) : undefined,
+          arguments: argumentsValue,
+        });
+      }
       if (operation === 'setup') {
         if (
           !input.values ||

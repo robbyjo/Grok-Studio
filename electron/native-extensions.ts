@@ -13,6 +13,7 @@ export const nativeMethods = new Set([
   '_x.ai/mcp/setup',
   '_x.ai/mcp/toggle_tool',
   '_x.ai/mcp/read_resource',
+  '_x.ai/mcp/browse',
   '_x.ai/mcp/call',
   '_x.ai/skills/list',
   '_x.ai/skills/add',

@@ -1,4 +1,18 @@
-# Windows agent isolation investigation
+# Windows isolation
+
+## Optional whole-app Windows Sandbox launch (0.7.0)
+
+**Project settings → Isolated Windows Sandbox project copy** prepares a reviewed portable payload and bounded project copy under the desktop profile's `sandboxes` folder. It opens a generated `.wsb` configuration when Windows Sandbox is available. It does not install or enable Windows features, change the host's network rules, or reboot Windows.
+
+The guest receives exactly two folder mappings: a read-only payload folder and a writable **copy** of the project. The original project and host authentication/profile directories are not mapped. Recognized credential files, vendor configuration, `.git`, generated folders and links are omitted. Files with custom secret names may still be included; inspect your project first. Snapshot limits are 10,000 entries, 20 directory levels, 50 MiB per file and 256 MiB total. Executable hashes bind preview to preparation. File copying uses bounded opened handles and rejects hard links and workspace path escapes.
+
+Networking defaults **off**; enabling it explicitly permits the guest to use online services and access the local network. This is a network on/off control, not a hostname firewall. vGPU, clipboard, microphone, camera and printer sharing are disabled; Protected Client is enabled. These are Windows Sandbox configuration settings ([Microsoft documentation](https://learn.microsoft.com/en-us/windows/security/application-security/application-isolation/windows-sandbox/windows-sandbox-configure-using-wsb-file)). The operating system supplies the VM boundary for the whole guest app, rather than Workbench trying to intercept selected native tools.
+
+Inside the guest, open `C:\WorkbenchProject` and sign in freshly. Git/development tools and external MCP executables may need installation inside the guest. Guest chats, authentication and tools are ephemeral and disappear when Sandbox closes. Changes to the mapped project copy remain in the displayed recovery folder. Review/copy them manually; there is no automatic apply, host-profile transfer or native session handoff. Prepared folders count toward the aggregate profile admission budget and remain until removed manually.
+
+Configuration, snapshot bounds, credential exclusion and stale-executable checks have automated acceptance. **Live guest launch and tool/hook/terminal/descendant containment acceptance remain open**: Windows Sandbox is unavailable on GPU and the user is running a week-long experiment, so feature enablement/reboot was deferred. Normal Workbench launches remain outside this boundary.
+
+## In-process AppContainer investigation
 
 Workbench's renderer uses Chromium's sandbox. Grok's pinned agent OS sandbox is unavailable on Windows, so agent tools, hooks, actions, PTYs and subprocesses currently run with the user's Windows permissions. Approval UI is a separate control, not an OS containment boundary.
 

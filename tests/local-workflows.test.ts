@@ -63,6 +63,25 @@ test('configuration edits retain comments/advanced fields, expose duplicates and
   assert.equal(await readFile(join(root, '.grok/config.toml'), 'utf8'), 'valid=true\n');
   await assert.rejects(config.open('arbitrary-path'), /select/);
 });
+test('ancestor sources stop at Git root and managed requirements remain read-only', async () => {
+  const { folder, root } = await fixture();
+  const home = join(folder, 'policy-home'),
+    child = join(root, 'nested');
+  await mkdir(home);
+  await mkdir(child);
+  await writeFile(join(root, 'AGENTS.md'), 'ROOT INSTRUCTIONS');
+  await writeFile(join(child, 'AGENTS.md'), 'CHILD INSTRUCTIONS');
+  await writeFile(join(folder, 'AGENTS.md'), 'OUTSIDE REPO');
+  await writeFile(join(home, 'requirements.toml'), '[subagents]\nenabled=false\n');
+  const config = new Configuration(() => home),
+    sources = await config.list(child);
+  assert.ok(sources.some((s) => s.scope === 'ancestor' && s.path === join(root, 'AGENTS.md')));
+  assert.ok(!sources.some((s) => s.path === join(folder, 'AGENTS.md')));
+  const policy = sources.find((s) => s.scope === 'requirements')!;
+  assert.equal(policy.readOnly, true);
+  const doc = await config.open(policy.id);
+  await assert.rejects(config.save(policy.id, 'enabled=true', doc.revision), /read-only/);
+});
 test('HTTP OAuth forgetting deletes only the selected canonical server key', async () => {
   const home = await mkdtemp(join(tmpdir(), 'grok-credentials-'));
   const path = join(home, 'mcp_credentials.json');

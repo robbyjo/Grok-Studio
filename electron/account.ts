@@ -78,6 +78,14 @@ export class Account {
         };
         return this.snapshot();
       } catch {
+        // A failed inspection must never leave a stale "signed in" badge.
+        // Saved credentials stay on disk; only the current verification is unknown.
+        this.status = {
+          ...this.status,
+          signedIn: false,
+          needsReconnect: !this.cancelled,
+          verification: this.cancelled ? 'cancelled' : 'unavailable',
+        };
         throw new Error(
           this.cancelled
             ? 'Grok sign-in cancelled.'

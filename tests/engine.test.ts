@@ -41,6 +41,49 @@ test('embedded startup resolves native skipped runtime fields and respects expli
   assert.equal(run('0').subagentsEnabled, false);
 });
 
+test('requirements pin native runtime mirrors despite conflicting user and environment settings', () => {
+  const root = mkdtempSync(join(tmpdir(), 'studio-engine-policy-')),
+    home = join(root, 'grok');
+  mkdirSync(home);
+  writeFileSync(
+    join(home, 'config.toml'),
+    '[subagents]\nenabled=true\n[managed_mcps]\nenabled=true\n',
+  );
+  writeFileSync(
+    join(home, 'requirements.toml'),
+    '[subagents]\nenabled=false\n[managed_mcps]\nenabled=false\n',
+  );
+  const output = execFileSync(
+    process.execPath,
+    [
+      '-e',
+      'const n=require(process.env.STUDIO_TEST_ADDON);n.start(process.cwd(),"test-only-secret-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","oauth");console.log("CONFIG="+n.configurationStatus());process.exit(0)',
+    ],
+    {
+      cwd: root,
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 30000,
+      env: {
+        ...process.env,
+        STUDIO_TEST_ADDON: resolve('.runtime/studio-engine.node'),
+        GROK_HOME: home,
+        GROK_SUBAGENTS: '1',
+        GROK_MANAGED_MCPS: '1',
+        XAI_API_KEY: '',
+        GROK_DEPLOYMENT_KEY: '',
+      },
+    },
+  );
+  const result = JSON.parse(
+    output
+      .split(/\r?\n/)
+      .find((line) => line.startsWith('CONFIG='))!
+      .slice(7),
+  );
+  assert.equal(result.subagentsEnabled, false);
+  assert.equal(result.managedMcpsEnabled, false);
+});
 test('native MCP configuration waits for a Windows byte-range lock and saves without bypassing it', () => {
   const root = mkdtempSync(join(tmpdir(), 'studio-engine-lock-')),
     home = join(root, 'grok');

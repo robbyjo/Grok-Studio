@@ -16,6 +16,7 @@ if (actual !== revision)
   throw new Error(
     `Engine source must be pinned to ${revision}; found ${actual}. Checkout the pin in ${root}.`,
   );
+require('./engine-discovery-patch.cjs');
 const file = path.join(root, 'crates/build/xai-proto-build/src/lib.rs');
 let text = fs.readFileSync(file, 'utf8');
 const marker = '// Grok Studio Windows build: protoc cannot write /dev/stdout.';
@@ -77,6 +78,25 @@ pub fn load_agent_config_for_studio() -> Result<crate::agent::config::Config, St
   fs.writeFileSync(configFile, configText);
 }
 const persist = path.join(root, 'crates/codegen/xai-grok-shell/src/util/config/persist.rs');
+// Runtime-only mirrors are skipped by serde. Pin their final value after environment
+// resolution, using the same merged requirements source as the native policy.
+configText = fs.readFileSync(configFile, 'utf8');
+const studioPolicyAnchor =
+  '    apply_policy(&mut config);\n    Ok(config)\n}\npub fn load_agent_config_disk_only()';
+const studioPolicyReplacement = `    apply_policy(&mut config);
+    // Workbench: requirements also clamp skipped runtime mirrors.
+    if let Some(req) = load_merged_requirements() {
+        if let Some(value) = req.get("subagents").and_then(|s| s.get("enabled")).and_then(|v| v.as_bool()) { config.subagents_enabled = value; }
+        if let Some(value) = req.get("managed_mcps").and_then(|s| s.get("enabled")).and_then(|v| v.as_bool()) { config.managed_mcps_enabled = value; }
+    }
+    Ok(config)
+}
+pub fn load_agent_config_disk_only()`;
+if (!configText.includes('// Workbench: requirements also clamp skipped runtime mirrors.')) {
+  if (!configText.includes(studioPolicyAnchor))
+    throw new Error('Studio runtime policy patch no longer applies.');
+  fs.writeFileSync(configFile, configText.replace(studioPolicyAnchor, studioPolicyReplacement));
+}
 let persistText = fs.readFileSync(persist, 'utf8');
 const originalLock = 'Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {';
 const windowsLock =

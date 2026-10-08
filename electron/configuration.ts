@@ -1,5 +1,7 @@
-import { join, resolve } from 'node:path';
+import { join, resolve, dirname } from 'node:path';
 import { readdir } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { openDocument, saveDocument } from './editor';
 import { inside } from './paths';
@@ -15,6 +17,7 @@ interface Source {
   scope: string;
   kind: string;
   names: string[];
+  readOnly?: boolean;
 }
 export class Configuration {
   private sources = new Map<string, Source>();
@@ -23,13 +26,19 @@ export class Configuration {
     this.sources.clear();
     const candidates: Source[] = [];
     const seen = new Set<string>();
-    const add = async (root: string, path: string, scope: string, kind: string) => {
+    const add = async (
+      root: string,
+      path: string,
+      scope: string,
+      kind: string,
+      readOnly = false,
+    ) => {
       try {
         const doc = await openDocument(root, path);
         const key = resolve(root, path).toLowerCase();
         if (seen.has(key)) return;
         seen.add(key);
-        const source: Source = { id: randomUUID(), root, path, scope, kind, names: [] };
+        const source: Source = { id: randomUUID(), root, path, scope, kind, names: [], readOnly };
         candidates.push(source);
         this.sources.set(source.id, source);
         let names: string[] = [];
@@ -60,33 +69,63 @@ export class Configuration {
       }
     };
     await add(this.home(), 'config.toml', 'user', 'toml');
-    for (const path of [
-      '.grok/config.toml',
-      '.mcp.json',
-      '.claude/settings.json',
-      '.cursor/mcp.json',
-      'AGENTS.md',
-      'Agents.md',
-      'AGENT.md',
-      'CLAUDE.md',
-      '.grok/hooks.json',
-      '.grok/grok-studio.json',
-    ]) {
-      await add(
+    await add(this.home(), 'managed_config.toml', 'managed', 'toml', true);
+    await add(this.home(), 'requirements.toml', 'requirements', 'toml', true);
+    for (const path of ['AGENTS.md', 'AGENT.md', 'CLAUDE.md'])
+      await add(this.home(), path, 'user', 'markdown');
+    // Match the native Git boundary: a non-repository project has no ancestor walk.
+    const roots = [resolve(cwd)];
+    try {
+      const result = await promisify(execFile)('git', ['rev-parse', '--show-toplevel'], {
         cwd,
-        path,
-        'project',
-        path.endsWith('.toml') ? 'toml' : path.endsWith('.json') ? 'json' : 'markdown',
-      );
+        windowsHide: true,
+        timeout: 5000,
+      });
+      const stop = resolve(result.stdout.trim());
+      let current = resolve(cwd);
+      while (current.toLowerCase() !== stop.toLowerCase() && roots.length < 64) {
+        const parent = dirname(current);
+        if (parent === current) break;
+        roots.unshift(parent);
+        current = parent;
+      }
+    } catch {
+      /* No Git repository: only the selected project is eligible. */
     }
-    for (const folder of ['.grok/rules', '.claude/rules', '.cursor/rules']) {
-      try {
-        const target = await inside(cwd, folder);
-        for (const entry of (await readdir(target, { withFileTypes: true })).slice(0, 200))
-          if (entry.isFile() && entry.name.endsWith('.md'))
-            await add(cwd, join(folder, entry.name), 'project', 'markdown');
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    for (const root of roots) {
+      for (const path of [
+        '.grok/config.toml',
+        '.mcp.json',
+        '.claude/settings.json',
+        '.cursor/mcp.json',
+        'AGENTS.md',
+        'Agents.md',
+        'AGENT.md',
+        'CLAUDE.md',
+        '.grok/hooks.json',
+        '.grok/grok-studio.json',
+      ]) {
+        await add(
+          root,
+          path,
+          root === resolve(cwd) ? 'project' : 'ancestor',
+          path.endsWith('.toml') ? 'toml' : path.endsWith('.json') ? 'json' : 'markdown',
+        );
+      }
+      for (const folder of ['.grok/rules', '.claude/rules', '.cursor/rules']) {
+        try {
+          const target = await inside(root, folder);
+          for (const entry of (await readdir(target, { withFileTypes: true })).slice(0, 200))
+            if (entry.isFile() && entry.name.endsWith('.md'))
+              await add(
+                root,
+                join(folder, entry.name),
+                root === resolve(cwd) ? 'project' : 'ancestor',
+                'markdown',
+              );
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        }
       }
     }
     return candidates.map((source) => ({
@@ -94,6 +133,7 @@ export class Configuration {
       path: resolve(source.root, source.path),
       scope: source.scope,
       kind: source.kind,
+      readOnly: source.readOnly,
       error: (source as any).error,
       definitions: source.names.map((name) => ({
         name,
@@ -111,6 +151,8 @@ export class Configuration {
   async save(id: string, text: string, revision: string) {
     const source = this.sources.get(id);
     if (!source) throw new Error('Refresh and select a configuration source.');
+    if (source.readOnly)
+      throw new Error('Managed policy and requirements are read-only in Workbench.');
     if (source.kind === 'toml') await parseToml(text);
     if (source.kind === 'json') JSON.parse(text.replace(/^\uFEFF/, ''));
     // Save exactly the reviewed text. Do not regenerate TOML or reconstruct server definitions.

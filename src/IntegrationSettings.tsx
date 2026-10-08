@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { Thread, Wire } from '../shared/types';
+import McpBrowser from './McpBrowser';
 export default function IntegrationSettings({ thread }: { thread?: Thread }) {
   const [kind, setKind] = useState('mcp'),
     [catalog, setCatalog] = useState<Wire>(),
@@ -33,7 +34,7 @@ export default function IntegrationSettings({ thread }: { thread?: Thread }) {
     }
   }
   if (!thread) return null;
-  const rows = catalog?.[kind === 'mcp' ? 'servers' : kind] ?? [];
+  const rows = kind === 'instructions' ? [] : (catalog?.[kind === 'mcp' ? 'servers' : kind] ?? []);
   return (
     <div className="mcp-settings">
       <h3>Effective runtime integrations</h3>
@@ -55,6 +56,7 @@ export default function IntegrationSettings({ thread }: { thread?: Thread }) {
         <option value="skills">Skills</option>
         <option value="plugins">Plugins</option>
         <option value="hooks">Hooks and policy</option>
+        <option value="instructions">Effective instructions and rules</option>
       </select>
       <button disabled={busy} onClick={() => void run()}>
         Load effective catalog
@@ -64,11 +66,30 @@ export default function IntegrationSettings({ thread }: { thread?: Thread }) {
           {error}
         </p>
       )}
+      {kind === 'instructions' && catalog && (
+        <>
+          <p>{catalog.policy}</p>
+          <p>
+            Project instructions:{' '}
+            {catalog.projectTrusted
+              ? 'trusted and eligible'
+              : 'withheld until folder trust is granted'}
+          </p>
+          {(catalog.instructions ?? []).map((item: Wire) => (
+            <details key={item.path}>
+              <summary>
+                {item.order + 1}. {item.source} · {item.path}
+              </summary>
+              <pre>{item.content}</pre>
+            </details>
+          ))}
+        </>
+      )}
       {kind === 'mcp' && (
         <p>
-          Resource reads accept a known URI. This runtime exposes no resource/prompt enumeration.
-          Forgetting local credentials closes connections and removes only this server's stored
-          OAuth credential; it does not revoke provider consent or clear configured bearer headers.
+          Browse provider resources, templates and prompts, or read a known URI. Forgetting local
+          credentials closes connections and removes only this server's stored OAuth credential; it
+          does not revoke provider consent or clear configured bearer headers.
         </p>
       )}
       {rows.map((row: Wire) => (
@@ -173,6 +194,7 @@ export default function IntegrationSettings({ thread }: { thread?: Thread }) {
                 value={resource}
                 onChange={(event) => setResource(event.target.value)}
               />
+              <McpBrowser id={thread.id} server={row.name} />
               <button
                 disabled={busy || !resource}
                 onClick={() => void run('resource-read', { name: row.name, uri: resource })}

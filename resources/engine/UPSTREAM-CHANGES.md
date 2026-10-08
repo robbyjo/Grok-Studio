@@ -10,6 +10,13 @@ Grok Workbench embeds xai-org/grok-build at revision
 - A library startup loader resolves runtime-only fields with the original CLI
   resolver before applying managed settings/requirements policy. The one-shot
   disk loader alone leaves skipped subagent/MCP/memory fields at serde defaults.
+- The startup loader additionally clamps the skipped runtime subagent/MCP
+  mirrors using managed requirements after environment/runtime resolution.
+- A Studio MCP browse command reuses the session's native client pool for
+  resources, templates and prompts. Its instruction inventory uses the native
+  compatibility/trust-aware loader and the agent's captured project directory.
+  `scripts/engine-discovery-patch.cjs` and the checked-in Rust extension under
+  `native/studio-engine/patches` reproduce these changes.
 - Windows configuration locking retries `ERROR_LOCK_VIOLATION` (33) as lock
   contention, using the existing bounded retry. It never writes without the lock.
 

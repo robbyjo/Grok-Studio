@@ -24,12 +24,18 @@ test(
       );
     await mkdir('.test-data', { recursive: true });
     const root = await mkdtemp(resolve('.test-data/native-integrations-'));
-    const cwd = join(root, 'project'),
+    const repo = join(root, 'repository'),
+      cwd = join(repo, 'project'),
       home = join(root, 'grok'),
       skill = join(root, 'skill-source'),
       plugin = join(root, 'plugin-source'),
       hooks = join(home, 'hook-source');
+    await mkdir(repo);
     for (const path of [cwd, home, skill, plugin, hooks]) await mkdir(path);
+    await execute('git', ['init', '-b', 'main'], { cwd: repo, windowsHide: true });
+    await writeFile(join(repo, 'AGENTS.md'), 'WORKBENCH_ROOT_INSTRUCTION');
+    await writeFile(join(cwd, 'AGENTS.md'), 'WORKBENCH_CHILD_INSTRUCTION');
+    await writeFile(join(home, 'AGENTS.md'), 'WORKBENCH_HOME_INSTRUCTION');
     await writeFile(
       join(skill, 'SKILL.md'),
       '---\nname: studio-fixture\ndescription: Disposable skill lifecycle acceptance.\n---\nReply HELLO when explicitly invoked.\n',
@@ -208,6 +214,27 @@ test(
         uri: 'fixture://hello',
       });
       assert.ok(JSON.stringify(resource).includes('RESOURCE_FROM_MCP_FIXTURE'));
+      const resources = await action('mcp', { operation: 'resources', name: 'fixture' });
+      assert.equal(resources.resources[0].uri, 'fixture://hello');
+      const templates = await action('mcp', { operation: 'templates', name: 'fixture' });
+      assert.equal(templates.resourceTemplates[0].uriTemplate, 'fixture://{name}');
+      const prompts = await action('mcp', { operation: 'prompts', name: 'fixture' });
+      assert.equal(prompts.prompts[0].arguments[0].required, true);
+      const prompt = await action('mcp', {
+        operation: 'prompt',
+        name: 'fixture',
+        prompt: 'fixture_prompt',
+        arguments: { topic: 'native acceptance' },
+      });
+      assert.ok(JSON.stringify(prompt).includes('native acceptance'));
+      const instructions = await integration.list(thread.id, 'instructions');
+      results.push({ kind: 'instructions', result: instructions });
+      const paths = instructions.instructions.map((row: any) => row.path.toLowerCase());
+      assert.ok(instructions.projectTrusted);
+      const rootIndex = paths.indexOf(join(repo, 'AGENTS.md').toLowerCase()),
+        childIndex = paths.indexOf(join(cwd, 'AGENTS.md').toLowerCase());
+      assert.ok(rootIndex >= 0 && childIndex > rootIndex);
+      assert.ok(JSON.stringify(instructions).includes('WORKBENCH_HOME_INSTRUCTION'));
       await action('hooks', { operation: 'remove', path: hooks });
       assert.ok(
         !(await readFile(join(root, 'desktop/state.json'), 'utf8')).includes('access_token'),

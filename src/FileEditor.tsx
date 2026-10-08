@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { TextDocument } from '../shared/types';
+import { highlight } from './syntax';
 
 export interface FileDraft extends TextDocument {
   savedText: string;
@@ -10,13 +11,33 @@ export default function FileEditor({
   draft,
   update,
   busy,
+  location,
 }: {
   id: string;
   path: string;
   draft?: FileDraft;
   update: (draft: FileDraft) => void;
   busy: boolean;
+  location?: { line?: number; column?: number };
 }) {
+  const input = useRef<HTMLTextAreaElement>(null),
+    overlay = useRef<HTMLPreElement>(null);
+  const syntax = useMemo(
+    () => (draft ? highlight(draft.text, path) : undefined),
+    [draft?.text, path],
+  );
+  useEffect(() => {
+    if (!input.current || !draft || !location?.line) return;
+    const lines = input.current.value.split('\n');
+    const position =
+      lines.slice(0, location.line - 1).reduce((n, line) => n + line.length + 1, 0) +
+      (location.column ?? 1) -
+      1;
+    input.current.focus();
+    input.current.setSelectionRange(position, position);
+    input.current.scrollTop = Math.max(0, (location.line - 5) * 20);
+    if (overlay.current) overlay.current.scrollTop = input.current.scrollTop;
+  }, [location, !!draft]);
   const [error, setError] = useState(''),
     [working, setWorking] = useState(false),
     [reload, setReload] = useState(false);
@@ -122,33 +143,47 @@ export default function FileEditor({
         </div>
       )}
       {draft && (
-        <textarea
-          className="file-preview file-edit-text"
-          aria-label={`Edit ${path}`}
-          spellCheck={false}
-          value={draft.text}
-          onChange={(event) => change(event.target.value)}
-          onKeyDown={(event) => {
-            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
-              event.preventDefault();
-              void save();
-            }
-            if (
-              event.key === 'Tab' &&
-              !event.ctrlKey &&
-              !event.metaKey &&
-              !event.altKey &&
-              !event.shiftKey
-            ) {
-              event.preventDefault();
-              const input = event.currentTarget,
-                start = input.selectionStart,
-                end = input.selectionEnd;
-              change(input.value.slice(0, start) + '\t' + input.value.slice(end));
-              queueMicrotask(() => input.setSelectionRange(start + 1, start + 1));
-            }
-          }}
-        />
+        <div className={`syntax-editor ${syntax === undefined ? '' : 'highlighted'}`}>
+          {syntax !== undefined && (
+            <pre ref={overlay} className="syntax-overlay" aria-hidden="true">
+              <code dangerouslySetInnerHTML={{ __html: syntax }} />
+            </pre>
+          )}
+          <textarea
+            ref={input}
+            className="file-preview file-edit-text"
+            aria-label={`Edit ${path}`}
+            spellCheck={false}
+            value={draft.text}
+            onChange={(event) => change(event.target.value)}
+            onScroll={(event) => {
+              if (overlay.current) {
+                overlay.current.scrollTop = event.currentTarget.scrollTop;
+                overlay.current.scrollLeft = event.currentTarget.scrollLeft;
+              }
+            }}
+            onKeyDown={(event) => {
+              if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+                event.preventDefault();
+                void save();
+              }
+              if (
+                event.key === 'Tab' &&
+                !event.ctrlKey &&
+                !event.metaKey &&
+                !event.altKey &&
+                !event.shiftKey
+              ) {
+                event.preventDefault();
+                const input = event.currentTarget,
+                  start = input.selectionStart,
+                  end = input.selectionEnd;
+                change(input.value.slice(0, start) + '\t' + input.value.slice(end));
+                queueMicrotask(() => input.setSelectionRange(start + 1, start + 1));
+              }
+            }}
+          />
+        </div>
       )}
       <small className="editor-help">
         Ctrl+S saves. Drafts survive switching files/chats while the app is open. Saves check for

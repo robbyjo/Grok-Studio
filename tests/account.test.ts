@@ -93,6 +93,28 @@ test('cancel closes the owned pending login and allows a subsequent sign-in', as
   wait = false;
   assert.equal((await account.signIn()).signedIn, true);
 });
+test('failed saved-account verification clears stale signed-in status and subsequent login recovers', async () => {
+  const file = join(mkdtempSync(join(tmpdir(), 'grok-account-reconnect-')), 'auth.json');
+  let fail = false;
+  const account = new Account(() => {
+    const rpc = new ProfileRpc(file);
+    const request = rpc.request.bind(rpc);
+    rpc.request = async (method, params = {}) => {
+      if (fail && method === '_x.ai/auth/info') throw new Error('401 expiry secret-token');
+      return request(method, params);
+    };
+    return rpc;
+  });
+  assert.equal((await account.signIn()).signedIn, true);
+  fail = true;
+  await assert.rejects(account.refresh(), /Could not check/);
+  assert.equal(account.snapshot().signedIn, false);
+  assert.equal(account.snapshot().needsReconnect, true);
+  assert.ok(!JSON.stringify(account.snapshot()).includes('secret-token'));
+  assert.equal(existsSync(file), true);
+  fail = false;
+  assert.equal((await account.signIn()).signedIn, true);
+});
 
 test('shutdown waits for the owned helper to exit before releasing the profile', async () => {
   const file = join(mkdtempSync(join(tmpdir(), 'grok-account-exit-')), 'auth.json');

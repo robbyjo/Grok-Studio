@@ -20,6 +20,8 @@ Existing published 0.6.3 assets predate these manifests. This source does not re
 
 ## Signing setup
 
+SignPath Foundation offers free signing for approved open-source projects. Grok Workbench meets basic application criteria but has not applied or been approved; see the [eligibility assessment](SIGNPATH.md). Current local artifacts remain unsigned, and a future SignPath release must use its verified CI signing workflow.
+
 Azure Artifact Signing (formerly Trusted Signing) is **paid**. Microsoft's Basic plan is US$9.99 per account per month, includes 5,000 signatures and charges $0.005 per additional signature. It requires a paid Azure subscription; free/trial/sponsored subscriptions are unsupported ([pricing](https://learn.microsoft.com/en-us/azure/artifact-signing/how-to-change-sku), [FAQ](https://learn.microsoft.com/en-us/azure/artifact-signing/faq)). No Azure subscription, signing account or billing resource has been created for this project.
 
 If a maintainer chooses Azure later, follow Microsoft's [setup guide](https://learn.microsoft.com/en-us/azure/artifact-signing/quickstart): create the account in a supported region, complete legal identity validation, create a Public Trust certificate profile, and assign signing access. Identity verification and billing must be completed by the account owner. The publisher must match the validated identity. Configure credentials locally or as CI secrets; do not commit them.

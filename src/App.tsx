@@ -31,7 +31,6 @@ import {
   X,
 } from 'lucide-react';
 import type {
-  FileItem,
   GitState,
   Permission,
   Project,
@@ -49,7 +48,8 @@ import ConfigurationEditor from './ConfigurationEditor';
 import WorktreeTools from './WorktreeTools';
 import GitRepositoryTools from './GitRepositoryTools';
 import ProjectActions from './ProjectActions';
-import FileEditor, { type FileDraft } from './FileEditor';
+import { type FileDraft } from './FileEditor';
+import WorkspaceFiles from './WorkspaceFiles';
 import GitChanges from './GitChanges';
 import TaskDashboard, { UsageIndicators } from './TaskDashboard';
 import Organization from './Organization';
@@ -262,14 +262,28 @@ export default function App() {
   const [executable, setExecutable] = useState('grok');
   const [error, setError] = useState('');
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const insert = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (
+        typeof detail?.id !== 'string' ||
+        typeof detail.text !== 'string' ||
+        detail.text.length > 65000
+      )
+        return;
+      setDrafts((value) => ({
+        ...value,
+        [detail.id]: [value[detail.id], detail.text].filter(Boolean).join('\n\n').slice(0, 100000),
+      }));
+    };
+    window.addEventListener('workbench:insert-prompt', insert);
+    return () => window.removeEventListener('workbench:insert-prompt', insert);
+  }, []);
   const [attached, setAttached] = useState<Record<string, Wire[]>>({});
   const [pending, setPending] = useState<Record<string, boolean>>({});
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [inspector, setInspector] = useState(true);
   const [tab, setTab] = useState<'files' | 'changes'>('changes');
-  const [filePath, setFilePath] = useState('.');
-  const [fileItems, setFileItems] = useState<FileItem[]>([]);
-  const [preview, setPreview] = useState<{ name: string; path: string }>();
   const [fileDrafts, setFileDrafts] = useState<Record<string, FileDraft>>({});
   const [git, setGit] = useState<GitState>();
   const [panelError, setPanelError] = useState('');
@@ -306,7 +320,7 @@ export default function App() {
   const draftKey = thread?.id ?? 'new';
   const draft = drafts[draftKey] ?? '';
   const busy = running(thread) || Boolean(thread && pending[thread.id]);
-  currentPanel.current = `${thread?.id ?? ''}:${tab}:${filePath}`;
+  currentPanel.current = `${thread?.id ?? ''}:${tab}`;
 
   useEffect(() => {
     if (!window.desktop) {
@@ -410,7 +424,6 @@ export default function App() {
       setSearchHit(undefined);
       setActiveId(result.id);
       setArchived(false);
-      setPreview(undefined);
       composer.current?.focus();
     }
   }
@@ -449,7 +462,7 @@ export default function App() {
   async function refresh() {
     if (!thread) return;
     const id = thread.id;
-    const key = `${id}:${tab}:${filePath}`;
+    const key = `${id}:${tab}`;
     if (currentPanel.current !== key) return;
     const request = ++panelRequest.current;
     setPanelError('');
@@ -457,9 +470,6 @@ export default function App() {
       if (tab === 'changes') {
         const result = await window.desktop.call<GitState>('git:state', { id });
         if (currentPanel.current === key && panelRequest.current === request) setGit(result);
-      } else {
-        const result = await window.desktop.call<FileItem[]>('files:list', { id, path: filePath });
-        if (currentPanel.current === key && panelRequest.current === request) setFileItems(result);
       }
     } catch (reason) {
       if (currentPanel.current !== key || panelRequest.current !== request) return;
@@ -470,17 +480,14 @@ export default function App() {
     }
   }
   useEffect(() => {
-    setFilePath('.');
-    setPreview(undefined);
     setGit(undefined);
-    setFileItems([]);
     setPanelError('');
     setTerminal(false);
     stick.current = !searchHit;
   }, [activeId, thread?.cwd]);
   useEffect(() => {
     void refresh();
-  }, [activeId, thread?.id, thread?.cwd, tab, filePath]);
+  }, [activeId, thread?.id, thread?.cwd, tab]);
   useEffect(() => {
     void window.desktop
       ?.call('editor:dirty', {
@@ -1253,7 +1260,6 @@ export default function App() {
                   className={tab === 'changes' ? 'selected' : ''}
                   onClick={() => {
                     setTab('changes');
-                    setPreview(undefined);
                   }}
                 >
                   <GitCompareArrows size={15} />
@@ -1326,69 +1332,17 @@ export default function App() {
                       )}
                     </>
                   )}
-                  {tab === 'files' &&
-                    (preview ? (
-                      <>
-                        <div className="file-preview-heading">
-                          <button
-                            className="icon-button"
-                            aria-label="Back to files"
-                            onClick={() => setPreview(undefined)}
-                          >
-                            <ChevronRight className="back" size={15} />
-                          </button>
-                          <span>{preview.name}</span>
-                          <small>Text editor</small>
-                        </div>
-                        <FileEditor
-                          key={`${thread.cwd}:${preview.path}`}
-                          id={thread.id}
-                          path={preview.path}
-                          draft={fileDrafts[`${thread.cwd}\0${preview.path}`]}
-                          update={(draft) =>
-                            setFileDrafts((items) => ({
-                              ...items,
-                              [`${thread.cwd}\0${preview.path}`]: draft,
-                            }))
-                          }
-                          busy={busy}
-                        />
-                      </>
-                    ) : (
-                      <>
-                        <div className="file-path">
-                          <span>{filePath}</span>
-                          {filePath !== '.' && (
-                            <button
-                              onClick={() => {
-                                const components = filePath.split(/[\\/]/);
-                                components.pop();
-                                setFilePath(components.join('/') || '.');
-                              }}
-                            >
-                              Up one folder
-                            </button>
-                          )}
-                        </div>
-                        <div className="file-list">
-                          {fileItems.map((item) => (
-                            <button
-                              key={item.path}
-                              onClick={async () => {
-                                if (item.directory) setFilePath(item.path);
-                                else {
-                                  setPreview({ name: item.name, path: item.path });
-                                }
-                              }}
-                            >
-                              {item.directory ? <Folder size={15} /> : <File size={14} />}
-                              <span>{item.name}</span>
-                              {item.directory && <ChevronRight size={12} />}
-                            </button>
-                          ))}
-                        </div>
-                      </>
-                    ))}
+                  {tab === 'files' && (
+                    <WorkspaceFiles
+                      key={thread.cwd}
+                      thread={thread}
+                      drafts={fileDrafts}
+                      busy={busy}
+                      update={(path, draft) =>
+                        setFileDrafts((items) => ({ ...items, [thread.cwd + '\0' + path]: draft }))
+                      }
+                    />
+                  )}
                 </>
               )}
               <div className="inspector-footer">

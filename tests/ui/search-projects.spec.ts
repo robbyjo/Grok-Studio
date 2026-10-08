@@ -181,7 +181,8 @@ test('native search jumps to messages and project removal retains files, drafts 
       .click();
     await settings.getByRole('button', { name: 'Restore project', exact: true }).click();
     await page.getByRole('button', { name: 'Files', exact: true }).click();
-    await page.getByRole('button', { name: 'draft.txt', exact: true }).click();
+    // The editor now restores its active tab when the project returns.
+    await expect(page.getByRole('tab', { name: 'draft.txt *', exact: true })).toBeVisible();
     await expect(page.getByRole('textbox', { name: 'Edit draft.txt', exact: true })).toHaveValue(
       'Retained unsaved draft\n',
     );

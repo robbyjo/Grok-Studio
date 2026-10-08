@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, lstat } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, lstat, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -15,7 +15,9 @@ import {
 const sha = (b: Buffer | string) => createHash('sha256').update(b).digest('hex');
 const engine = 'e'.repeat(64);
 async function fixture() {
-  const root = await mkdtemp(join(tmpdir(), 'grok-update-')),
+  // Hosted Windows runners may expose TEMP through an 8.3 alias. The update
+  // fixture must use a canonical launch path, just like the production gate.
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'grok-update-'))),
     folder = join(root, 'updates'),
     exe = join(root, 'Workbench.exe');
   await writeFile(exe, 'old executable');

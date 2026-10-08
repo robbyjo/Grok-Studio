@@ -39,12 +39,33 @@ export function response(message, log) {
         ],
       };
       break;
+    case 'resources/templates/list':
+      result = {
+        resourceTemplates: [{ uriTemplate: 'fixture://{name}', name: 'Fixture template' }],
+      };
+      break;
     case 'prompts/list':
-      result = { prompts: [{ name: 'fixture_prompt', description: 'Fixture prompt' }] };
+      result = {
+        prompts: [
+          {
+            name: 'fixture_prompt',
+            description: 'Fixture prompt',
+            arguments: [{ name: 'topic', required: true }],
+          },
+        ],
+      };
       break;
     case 'prompts/get':
       result = {
-        messages: [{ role: 'user', content: { type: 'text', text: 'Fixture prompt contents' } }],
+        messages: [
+          {
+            role: 'user',
+            content: {
+              type: 'text',
+              text: 'Fixture prompt contents: ' + (message.params.arguments?.topic ?? 'default'),
+            },
+          },
+        ],
       };
       break;
     case 'ping':

@@ -70,6 +70,7 @@ export default function ConfigurationEditor({
         <div className="mcp-server" key={source.id}>
           <strong>
             {source.scope} · {source.kind}
+            {source.readOnly ? ' · managed, read-only' : ''}
           </strong>
           <code>{source.path}</code>
           {source.error && <p>{source.error}</p>}
@@ -92,10 +93,11 @@ export default function ConfigurationEditor({
               aria-label="Configuration source text"
               rows={16}
               value={text}
+              readOnly={selected.readOnly === true}
               onChange={(event) => setText(event.target.value)}
             />
           </label>
-          <button disabled={busy || !dirty} onClick={() => void run('save')}>
+          <button disabled={busy || !dirty || selected.readOnly} onClick={() => void run('save')}>
             Save reviewed source
           </button>
           <button

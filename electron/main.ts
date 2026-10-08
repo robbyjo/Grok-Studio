@@ -18,6 +18,8 @@ import { PortableUpdates, fileHash } from './portable-update';
 import { Terminals } from './terminals';
 import { Mcp, addArguments } from './mcp';
 import { openDocument, saveDocument } from './editor';
+import { searchFiles } from './file-search';
+import { WindowsSandbox } from './windows-sandbox';
 import { changeIndex, commitIndex, fileDiff } from './git-actions';
 import { rendererUrlMatches } from './renderer-origin';
 import { Diagnostics } from './diagnostics';
@@ -45,6 +47,7 @@ let sessions: Sessions;
 let integrations: Integrations;
 let configuration: Configuration;
 let actions: Actions;
+let windowsSandbox: WindowsSandbox;
 let worktrees: Worktrees;
 let gitReview: GitReview;
 let profileStorage: ProfileStorage;
@@ -57,6 +60,7 @@ let account: Account;
 let accountMutation = false;
 let accountCancelled = false;
 let media: Media;
+const fileSearches = new Map<string, AbortController>();
 const generating = new Set<string>();
 protocol.registerSchemesAsPrivileged([
   {
@@ -889,6 +893,35 @@ async function dispatch(method: string, args: Wire) {
       }
       return project;
     }
+    case 'sandbox:preview': {
+      const project = store.project(string(args.projectId, 'project ID', 100));
+      if (project.hidden) throw new Error('Restore the project before opening a sandbox.');
+      return windowsSandbox.preview(project.path, args.network === true);
+    }
+    case 'sandbox:launch': {
+      if (args.reviewed !== true)
+        throw new Error('Review the sandbox project copy and network access.');
+      await profileStorage.assertCapacity(profileBudget(store.state.settings.profileMiB ?? 4096));
+      const prepared = await windowsSandbox.prepare(string(args.token, 'sandbox review', 100));
+      const sandboxExecutable = join(
+        process.env.SystemRoot ?? 'C:\\Windows',
+        'System32',
+        'WindowsSandbox.exe',
+      );
+      if (!existsSync(sandboxExecutable))
+        return {
+          ...prepared,
+          message:
+            'Prepared. Windows Sandbox is not enabled on this machine; enable its optional feature and reboot before opening the .wsb configuration.',
+        };
+      const failure = await shell.openPath(prepared.config);
+      return {
+        ...prepared,
+        message: failure
+          ? 'Prepared; Windows Sandbox could not launch: ' + failure
+          : 'Launch requested. Sign in freshly inside the guest and open C:\\WorkbenchProject.',
+      };
+    }
     case 'thread:new': {
       const project = store.state.projects.find((item) => item.id === args.projectId);
       if (!project) throw new Error('Choose a project first.');
@@ -973,6 +1006,44 @@ async function dispatch(method: string, args: Wire) {
     }
     case 'files:list':
       return files(thread().cwd, string(args.path ?? '.', 'path'));
+    case 'files:search': {
+      const id = thread().id,
+        previous = fileSearches.get(id);
+      previous?.abort();
+      const controller = new AbortController();
+      fileSearches.set(id, controller);
+      try {
+        return await searchFiles(
+          thread().cwd,
+          string(args.query, 'search', 256),
+          args.contents === true,
+          args.offset ?? 0,
+          controller.signal,
+        );
+      } finally {
+        if (fileSearches.get(id) === controller) fileSearches.delete(id);
+      }
+    }
+    case 'files:cancel-search':
+      fileSearches.get(thread().id)?.abort();
+      return { cancelled: true };
+    case 'files:tabs': {
+      const root = thread().cwd;
+      const records = store.history.value('editor-tabs') ?? {};
+      if (args.paths !== undefined) {
+        if (!Array.isArray(args.paths) || args.paths.length > 20)
+          throw new Error('Open up to 20 editor tabs.');
+        const paths = args.paths.map((path: unknown) => string(path, 'tab path', 4096));
+        records[root] = {
+          paths: [...new Set(paths)],
+          active: paths.includes(args.active) ? args.active : undefined,
+        };
+        const keys = Object.keys(records);
+        for (const key of keys.slice(0, Math.max(0, keys.length - 100))) delete records[key];
+        store.history.setValue('editor-tabs', records);
+      }
+      return records[root] ?? { paths: [] };
+    }
     case 'files:read':
       return textFile(thread().cwd, string(args.path, 'path'));
     case 'files:open':
@@ -1259,6 +1330,10 @@ else {
     integrations = new Integrations(agents, store);
     configuration = new Configuration(grokProfile);
     actions = new Actions(store);
+    windowsSandbox = new WindowsSandbox(
+      join(app.getPath('userData'), 'sandboxes'),
+      () => process.env.PORTABLE_EXECUTABLE_FILE,
+    );
     worktrees = new Worktrees(store);
     gitReview = new GitReview(store);
     terminals = new Terminals(emit, store.history);

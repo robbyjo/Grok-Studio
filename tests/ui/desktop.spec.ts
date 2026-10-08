@@ -14,6 +14,8 @@ test('native desktop: persisted chat, file/diff panels, terminal, and IPC bounda
   git(['config', 'user.name', 'Fixture']);
   git(['config', 'user.email', 'fixture@example.invalid']);
   await writeFile(join(project, 'hello.txt'), 'original\n');
+  await writeFile(join(project, 'example.ts'), 'const needle = "<script>alert(1)</script>";\n');
+  await writeFile(join(project, '.env'), 'PRIVATE_FIXTURE_ONLY');
   git(['add', '.']);
   git(['commit', '-m', 'fixture']);
   await writeFile(join(project, 'hello.txt'), 'Changed in the real filesystem\n');
@@ -71,6 +73,55 @@ test('native desktop: persisted chat, file/diff panels, terminal, and IPC bounda
     await page.getByRole('button', { name: 'Back to files', exact: true }).click();
     await page.getByRole('button', { name: 'hello.txt', exact: true }).click();
     await expect(editor).toHaveValue('Unsaved GUI draft\n');
+    await page.getByLabel('Project file search').fill('needle');
+    await page.getByLabel('Search contents', { exact: true }).check();
+    await page.getByRole('button', { name: 'Search files', exact: true }).click();
+    await page.getByRole('button', { name: /example.ts:1/ }).click();
+    await expect(page.getByRole('textbox', { name: 'Edit example.ts', exact: true })).toHaveValue(
+      'const needle = "<script>alert(1)</script>";\n',
+    );
+    await expect(page.locator('.syntax-overlay .token.keyword')).toHaveText('const');
+    await expect(page.getByRole('tab', { name: 'hello.txt *', exact: true })).toBeVisible();
+    await page.getByRole('tab', { name: 'hello.txt *', exact: true }).click();
+    await expect(editor).toHaveValue('Unsaved GUI draft\n');
+    await expect
+      .poll(() =>
+        page.evaluate(
+          async () => (await window.desktop.call('files:tabs', { id: 't' })).paths.length,
+        ),
+      )
+      .toBe(2);
+    await page.getByRole('button', { name: 'Close search results', exact: true }).click();
+    // Exercise the real snapshot/WSB path, without launching a VM in GUI fixtures.
+    const sandboxExe = join(data, 'SandboxFixture.exe');
+    await writeFile(sandboxExe, 'portable fixture');
+    await app.evaluate(({ shell }, executable) => {
+      process.env.PORTABLE_EXECUTABLE_FILE = executable;
+      (globalThis as any).fixtureOpenSandbox = '';
+      shell.openPath = async (path) => {
+        (globalThis as any).fixtureOpenSandbox = path;
+        return '';
+      };
+    }, sandboxExe);
+    const sandboxReview = await page.evaluate(() =>
+      window.desktop.call('sandbox:preview', { projectId: 'p', network: false }),
+    );
+    const sandboxPrepared = await page.evaluate(
+      (review) =>
+        window.desktop.call('sandbox:launch', {
+          projectId: 'p',
+          token: review.token,
+          reviewed: true,
+        }),
+      sandboxReview,
+    );
+    expect(await readFile(join(sandboxPrepared.recovery, 'example.ts'), 'utf8')).toContain(
+      'const needle',
+    );
+    await expect(readFile(join(sandboxPrepared.recovery, '.env'), 'utf8')).rejects.toThrow();
+    expect(await readFile(sandboxPrepared.config, 'utf8')).toContain(
+      '<Networking>Disable</Networking>',
+    );
     await page.evaluate(async () => {
       await window.desktop.call('terminal:open', { id: 't' });
       await window.desktop.call('terminal:write', { id: 't', data: '$taskSurvivedQuit = 42\r' });

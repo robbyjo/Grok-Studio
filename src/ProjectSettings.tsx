@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import type { Project } from '../shared/types';
+import SandboxLaunch from './SandboxLaunch';
 
 export default function ProjectSettings({
   project,
@@ -52,6 +53,7 @@ export default function ProjectSettings({
           </button>
         </div>
         <p className="project-path">{project.path}</p>
+        {!project.hidden && <SandboxLaunch projectId={project.id} />}
         <label className="field-label" htmlFor="project-name">
           Project name
         </label>

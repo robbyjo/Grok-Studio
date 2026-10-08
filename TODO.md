@@ -22,7 +22,8 @@ Windows local coding workflows come first. The detailed capability/evidence matr
 - [x] Add Windows CI for build, backend, native UI, packaged GUI and actual portable launch/relocation checks. Hosted-run outcome is recorded separately in VALIDATION.md.
 - [x] Authenticate Grok and run the source and final 0.6.0 packaged GUI disposable-repository acceptance suite: real edit/test/approve/reject/cancel/resume, model/effort switches and a real MCP call. Modes were not advertised by this runtime. See [current validation](docs/VALIDATION.md) and [earlier observed live results](docs/LIVE-RESULTS-2026-10-07.md).
 - [x] Fresh-profile portable launch/PowerShell/native inventory, relocation and persistence on USER-PC over SSH; no live credentials transferred. USER-PC already has Git/Grok, so this is existing-machine evidence.
-- [ ] Dependency-free/pristine Windows acceptance and fresh cross-machine OAuth sign-in/model/restart acceptance.
+- [x] Fresh USER-PC OAuth sign-in, real model request, full app restart and native session resume without credential transfer.
+- [ ] Dependency-free/pristine Windows acceptance, Windows reboot persistence and forced real token expiry/refresh.
 
 ## Integration parity
 
@@ -31,16 +32,19 @@ Windows local coding workflows come first. The detailed capability/evidence matr
 - [x] Edit existing TOML/JSON MCP definitions with exact text/comment/advanced-field preservation, duplicate-source inspection and stale-content checks.
 - [x] Runtime effective MCP source/tool inventory and per-tool controls, including plugin/compat/managed provenance supplied by Grok.
 - [x] Real native MCP setup, per-tool disable/enable and known-URI resource read acceptance.
-- [ ] MCP resources/prompts enumeration. No enumeration extension is exposed by this runtime; GUI reports this limit.
+- [x] Native MCP resource/template/prompt enumeration, provider pagination, argument forms and reviewed text insertion. Live native fixture acceptance is recorded in VALIDATION.md.
 - [x] Skill/plugin management: inventory, registered skill paths, enable/disable, plugin install/update/remove and source/trust/scope review; real native fixture lifecycle passed.
 - [x] Git-backed plugin update/version acceptance with a real cloned disposable Git source, preserving its original source on uninstall.
 - [ ] Marketplace management and exhaustive managed-policy/compat-source acceptance.
 - [x] Existing instruction/rule/hook configuration editors, effective hook source/pinned-policy views and native hook registration/toggles; real native lifecycle passed.
 - [x] Real native Windows Stop-hook execution acceptance with a verified file marker.
-- [ ] Managed instructions/rules precedence across every ancestor/source.
+- [x] Effective instruction/rule inventory through the native loader, Git-bounded ancestor source editing, managed/requirements read-only controls and requirements clamp for runtime mirrors.
+- [ ] Exhaustive managed instructions/rules precedence across every compatibility source and administrator deployment.
 - [x] Explicit environment setup and reusable project actions: reviewed executable/argv/workspace, edit/remove, captured output and owned-process cancellation.
 
 ## Remaining local workflows
+
+- [x] Persistent editor tabs, bounded syntax highlighting, literal filename/content search with pagination/cancellation and matching-line navigation.
 
 - [x] Real CLI session import/history, native fork and pre-prompt checkpoints with reviewed file/conversation rewind and recovery backups.
 - [x] Worktree branch/base selection, attach/native conversation handoff, reviewed apply to clean targets, recoverable archive and detached restore.
@@ -62,8 +66,11 @@ Windows local coding workflows come first. The detailed capability/evidence matr
 - [x] Native engine revision/hash/ABI gates, manifest-bound portable download/replacement/binary rollback, retained-file cleanup and failed-worker recovery; Windows worker/PE regressions and actual portable exit/replacement/restart/rollback with GUI draft preservation passed. See [portable updates](docs/PORTABLE-UPDATES.md).
 - [x] Optional certificate/Azure signing build configuration, preflight and post-build signature/publisher verification. Azure is paid; no account/resource/billing signup was performed.
 - [ ] Actual trusted signing service/certificate build and published signed newer-version update/rollback/clean-machine trust acceptance.
+- [ ] SignPath Foundation application/approval: confirm MFA and team roles, publish signing/privacy policies, agree upstream artifact restrictions, integrate verified CI signing and validate the signed portable. [Eligibility assessment](docs/SIGNPATH.md); no application submitted.
 - [x] Investigate Windows agent isolation: real disposable AppContainer ACL/private-file/loopback probe passed and profile cleanup verified. See [investigation](docs/WINDOWS-ISOLATION.md).
-- [ ] Integrate an agent sandbox/broker and validate containment of all tools, hooks, terminals and descendants. The probe does not enable agent OS isolation.
+- [x] Optional reviewed whole-app Windows Sandbox launch configuration: isolated bounded project copy, no host profile mapping, explicit network switch and disabled device/clipboard redirection.
+- [ ] Live Windows Sandbox tool/hook/terminal/descendant containment acceptance. Host reboot deferred during the user's week-long experiment.
+- [ ] In-process agent AppContainer/broker integration. Normal launches retain host Windows permissions.
 
 ## Later platform/scope work
 
