@@ -55,7 +55,7 @@ Windows local coding workflows come first. The detailed capability/evidence matr
 - [x] Process-scoped usage/cost and available-context indicators, opt-in notifications, configurable shortcuts, keyboard focus and reduced-motion support.
 - [x] Diagnostics/log viewer, bounded log/history storage, durable drafts and real renderer crash/reload recovery; bounded concurrent history performance acceptance passed.
 - [x] Eight overlapping real OAuth model turns with distinct native session IDs; observed peak 8. This is separate from the simulated storage soak.
-- [ ] Multi-hour history/storage soak with eight simulated streams; actual two-hour run in progress.
+- [x] Actual two-hour history/storage soak with eight simulated streams: 500 chats/100,000 seeded entries, 13,935 cycles, loaded cache 8 chats/1,600 entries and sampled peak RSS about 348 MiB. Separate from the eight real OAuth turns.
 - [x] Aggregate profile inventory/admission budget and reviewed old, archived native session export/prune/hash restore; real native session OAuth resume passed. Budget is admission control, not an OS disk quota.
 - [x] Abrupt owned main-process termination/relaunch and interrupted SQLite transaction recovery; durable drafts, paused queues and no automatic agent restart verified. Physical power-loss/reboot remains outside this acceptance.
 - [ ] Full screen-reader/assistive-technology audit and provider-reported context-window validation; current account does not report context size.
