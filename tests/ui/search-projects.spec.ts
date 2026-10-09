@@ -132,6 +132,7 @@ test('native search jumps to messages and project removal retains files, drafts 
     await expect(page.locator('.breadcrumbs')).toContainText('Renamed project');
     await page.getByRole('button', { name: 'Files', exact: true }).click();
     await page.getByRole('button', { name: 'draft.txt', exact: true }).click();
+    await page.getByRole('button', { name: 'Use plain text editor', exact: true }).click();
     await page
       .getByRole('textbox', { name: 'Edit draft.txt', exact: true })
       .fill('Retained unsaved draft\n');

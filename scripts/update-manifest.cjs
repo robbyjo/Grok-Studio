@@ -5,8 +5,27 @@ const crypto = require('node:crypto');
 const cp = require('node:child_process');
 async function main() {
   const version = require('../package.json').version,
-    engine = JSON.parse(fs.readFileSync('.runtime/engine.json', 'utf8')),
+    original = process.env.GROK_ORIGINAL_MANIFEST
+      ? JSON.parse(fs.readFileSync(process.env.GROK_ORIGINAL_MANIFEST, 'utf8'))
+      : undefined,
+    engine = original
+      ? {
+          revision: original.nativeRevision,
+          sha256: original.engineSha256,
+          bindingVersion: original.bindingVersion,
+        }
+      : JSON.parse(fs.readFileSync('.runtime/engine.json', 'utf8')),
     file = path.resolve('release', `Grok-Workbench-${version}-Portable.exe`);
+  if (
+    original &&
+    (original.product !== 'Grok Workbench' ||
+      original.version !== version ||
+      original.format !== 2 ||
+      !/^[a-f0-9]{64}$/.test(engine.sha256) ||
+      engine.bindingVersion !== '0.6.0' ||
+      !/^[a-f0-9]{40}$/.test(engine.revision))
+  )
+    throw new Error('Invalid original CI manifest.');
   const hash = crypto.createHash('sha256');
   for await (const part of fs.createReadStream(file)) hash.update(part);
   const sha256 = hash.digest('hex');
@@ -32,7 +51,7 @@ async function main() {
   if (process.env.GROK_SIGNER_NAME && signature.publisher !== process.env.GROK_SIGNER_NAME)
     throw new Error('Unexpected code-signing publisher.');
   const manifest = {
-    format: 1,
+    format: 2,
     product: 'Grok Workbench',
     version,
     platform: 'win32-x64',
@@ -42,6 +61,9 @@ async function main() {
     historySchema: 1,
     bindingVersion: engine.bindingVersion,
     engineSha256: engine.sha256,
+    migration: 'same-native-format-v1',
+    nativeRevision: engine.revision,
+    nativeStorageContract: 'pinned-grok-2bdd1d6a-v1',
     signerThumbprint: signature.status === 'Valid' ? signature.thumbprint : null,
     signerPublisher: signature.status === 'Valid' ? signature.publisher : null,
   };

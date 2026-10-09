@@ -44,6 +44,11 @@ Windows local coding workflows come first. The detailed capability/evidence matr
 
 ## Remaining local workflows
 
+- [x] Task → test → review with reviewed automatic worktree creation, configured test execution, persistent results/cancellation/recovery and selected-file apply to clean targets. Real OAuth GUI acceptance passed; see [task workflow](docs/TASK-WORKFLOW.md).
+- [x] Lazy Monaco coding editor, local workers, bounded relative-import navigation, completion/diagnostics/find/replace, keyboard saves and guarded file creation/rename. Full project LSP/type graphs remain future work; see [editor scope](docs/CODE-EDITOR.md).
+- [x] Fix Windows CI Git-root ancestry under TEMP aliases; prepare exact-successful-CI-artifact manual publication with immutable source/tag/checksum checks. Live Foundation signing remains gated.
+- [x] Explicit same-pinned-native-format engine upgrade recipe with verified private durable-profile/SQLite backup and worker revalidation. Unknown format migrations and a published signed newer-engine update remain open.
+
 - [x] Persistent editor tabs, bounded syntax highlighting, literal filename/content search with pagination/cancellation and matching-line navigation.
 
 - [x] Real CLI session import/history, native fork and pre-prompt checkpoints with reviewed file/conversation rewind and recovery backups.
@@ -66,7 +71,7 @@ Windows local coding workflows come first. The detailed capability/evidence matr
 - [x] Native engine revision/hash/ABI gates, manifest-bound portable download/replacement/binary rollback, retained-file cleanup and failed-worker recovery; Windows worker/PE regressions and actual portable exit/replacement/restart/rollback with GUI draft preservation passed. See [portable updates](docs/PORTABLE-UPDATES.md).
 - [x] Optional certificate/Azure signing build configuration, preflight and post-build signature/publisher verification. Azure is paid; no account/resource/billing signup was performed.
 - [ ] Actual trusted signing service/certificate build and published signed newer-version update/rollback/clean-machine trust acceptance.
-- [ ] SignPath Foundation application/approval: confirm MFA and team roles, publish signing/privacy policies, agree upstream artifact restrictions, integrate verified CI signing and validate the signed portable. [Eligibility assessment](docs/SIGNPATH.md); no application submitted.
+- [ ] SignPath Foundation application/approval: create owner account, confirm MFA/team roles, agree upstream artifact restrictions and validate live signed portable. Gated CI integration and public signing/privacy policy drafts are prepared. [Setup](docs/SIGNPATH.md); no application submitted.
 - [x] Investigate Windows agent isolation: real disposable AppContainer ACL/private-file/loopback probe passed and profile cleanup verified. See [investigation](docs/WINDOWS-ISOLATION.md).
 - [x] Optional reviewed whole-app Windows Sandbox launch configuration: isolated bounded project copy, no host profile mapping, explicit network switch and disabled device/clipboard redirection.
 - [ ] Live Windows Sandbox tool/hook/terminal/descendant containment acceptance. Host reboot deferred during the user's week-long experiment.

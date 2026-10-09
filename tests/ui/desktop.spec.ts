@@ -67,6 +67,7 @@ test('native desktop: persisted chat, file/diff panels, terminal, and IPC bounda
     await page.screenshot({ path: '.test-data/desktop-welcome.png' });
     await page.getByRole('button', { name: 'Files', exact: true }).click();
     await page.getByRole('button', { name: 'hello.txt' }).click();
+    await page.getByRole('button', { name: 'Use plain text editor', exact: true }).click();
     const editor = page.getByRole('textbox', { name: 'Edit hello.txt', exact: true });
     await expect(editor).toHaveValue('Changed in the real filesystem\n');
     await editor.fill('Unsaved GUI draft\n');

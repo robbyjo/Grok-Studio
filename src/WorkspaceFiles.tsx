@@ -24,14 +24,19 @@ export default function WorkspaceFiles({
     [searching, setSearching] = useState(false),
     [location, setLocation] = useState<Wire>();
   const generation = useRef(0);
+  const [newPath, setNewPath] = useState(''),
+    [newFolder, setNewFolder] = useState(false),
+    [revision, setRevision] = useState(0);
   useEffect(() => {
     let alive = true;
     void window.desktop
       .call<Wire>('files:tabs', { id: thread.id })
       .then((value) => {
         if (alive) {
-          setTabs(value.paths);
-          setActive(value.active);
+          // Opening a file can beat restoration on a slow IPC round-trip.
+          // Preserve that explicit choice and merge restored tabs behind it.
+          setTabs((current) => [...new Set([...(value.paths ?? []), ...current])].slice(-20));
+          setActive((current) => current ?? value.active);
           setReady(true);
         }
       })
@@ -66,7 +71,7 @@ export default function WorkspaceFiles({
     return () => {
       alive = false;
     };
-  }, [thread.id, folder]);
+  }, [thread.id, folder, revision]);
   function open(path: string, hit?: Wire) {
     if (!tabs.includes(path)) {
       if (tabs.length >= 20) {
@@ -98,6 +103,70 @@ export default function WorkspaceFiles({
   }
   return (
     <div className="workspace-files">
+      <details>
+        <summary>Create or rename files</summary>
+        <label>
+          Workspace path
+          <input
+            aria-label="New workspace path"
+            value={newPath}
+            onChange={(e) => setNewPath(e.target.value)}
+          />
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={newFolder}
+            onChange={(e) => setNewFolder(e.target.checked)}
+          />
+          Create folder
+        </label>
+        <button
+          disabled={busy || !newPath.trim()}
+          onClick={async () => {
+            try {
+              const result = await window.desktop.call('files:create', {
+                id: thread.id,
+                path: newPath,
+                folder: newFolder,
+              });
+              setRevision((v) => v + 1);
+              if (!newFolder) open(result.path);
+              setNewPath('');
+              setError('');
+            } catch (e) {
+              setError(String(e));
+            }
+          }}
+        >
+          Create workspace entry
+        </button>
+        <button
+          disabled={busy || !active || !newPath.trim() || newFolder}
+          onClick={async () => {
+            try {
+              const draft = drafts[thread.cwd + '\0' + active!];
+              if (!draft || draft.text !== draft.savedText)
+                throw new Error('Save the active draft before renaming.');
+              const result = await window.desktop.call('files:rename', {
+                id: thread.id,
+                path: active,
+                destination: newPath,
+                revision: draft.revision,
+              });
+              setTabs(tabs.map((p) => (p === active ? result.path : p)));
+              setActive(result.path);
+              setNewPath('');
+              setRevision((v) => v + 1);
+              setError('');
+            } catch (e) {
+              setError(String(e));
+            }
+          }}
+        >
+          Rename active file
+        </button>
+      </details>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -219,6 +288,7 @@ export default function WorkspaceFiles({
             update={(draft) => update(active, draft)}
             busy={busy}
             location={location}
+            navigate={(path, hit) => open(path, hit)}
           />
         </>
       ) : (

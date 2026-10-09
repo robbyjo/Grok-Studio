@@ -11,10 +11,12 @@ import {
   compareVersions,
   fileHash,
   verifyPortableArtifact,
+  supportedNativeRevision,
 } from '../electron/portable-update';
+import { backupProfile } from '../electron/profile-backup';
 const sha = (b: Buffer | string) => createHash('sha256').update(b).digest('hex');
 const engine = 'e'.repeat(64);
-async function fixture() {
+async function fixture(migration = false, snapshot = false) {
   // Hosted Windows runners may expose TEMP through an 8.3 alias. The update
   // fixture must use a canonical launch path, just like the production gate.
   const root = await realpath(await mkdtemp(join(tmpdir(), 'grok-update-'))),
@@ -24,14 +26,17 @@ async function fixture() {
   const bytes = Buffer.from('new executable'),
     manifest = Buffer.from(
       JSON.stringify({
-        format: 1,
+        format: migration ? 2 : 1,
+        migration: migration ? 'same-native-format-v1' : undefined,
+        nativeRevision: migration ? supportedNativeRevision : undefined,
+        nativeStorageContract: migration ? 'pinned-grok-2bdd1d6a-v1' : undefined,
         product: 'Grok Workbench',
         version: '0.6.4',
         platform: 'win32-x64',
         stateSchema: 1,
         historySchema: 1,
         bindingVersion: '0.6.0',
-        engineSha256: engine,
+        engineSha256: migration ? 'd'.repeat(64) : engine,
         sha256: sha(bytes),
         bytes: bytes.length,
       }),
@@ -68,9 +73,81 @@ async function fixture() {
             ? manifest
             : bytes,
     async () => ({ version: '0.6.4', signature: 'NotSigned' }),
+    snapshot ? (metadata) => backupProfile(root, join(root, 'grok'), folder, metadata) : undefined,
   );
   return { api, root, folder, exe, release };
 }
+test(
+  'engine change requires explicit migration approval and verified backup; tampering prevents Windows replacement',
+  { skip: process.platform !== 'win32' },
+  async () => {
+    const unsupported = await fixture(true),
+      noBackupReview = await unsupported.api.check(true);
+    await assert.rejects(
+      unsupported.api.stage(noBackupReview.token, true, true),
+      /migration approval/,
+    );
+    const f = await fixture(true, true);
+    await mkdir(join(f.root, 'grok'));
+    await writeFile(join(f.root, 'state.json'), 'saved desktop state');
+    await writeFile(join(f.root, 'grok', 'auth.json'), 'FAKE_AUTH_FIXTURE_ONLY');
+    const review = await f.api.check(true);
+    await assert.rejects(f.api.stage(review.token, true), /migration approval/);
+    await f.api.stage(review.token, true, true);
+    const journal = await f.api.prepare('apply', true),
+      prepared = JSON.parse(await readFile(journal, 'utf8'));
+    assert.ok(prepared.profileBackup.manifestHash);
+    await writeFile(join(prepared.profileBackup.folder, 'profile', 'state.json'), 'tampered');
+    prepared.ownerPid = 0;
+    await writeFile(journal, JSON.stringify(prepared));
+    assert.throws(() =>
+      execFileSync(
+        'powershell.exe',
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-File',
+          resolve('scripts/portable-update-worker.ps1'),
+          '-Journal',
+          journal,
+          '-NoLaunch',
+        ],
+        { windowsHide: true, stdio: 'ignore' },
+      ),
+    );
+    assert.equal(await readFile(f.exe, 'utf8'), 'old executable');
+    assert.equal((await f.api.status()).journal?.state, 'repairRequired');
+    assert.equal(await readFile(join(f.root, 'state.json'), 'utf8'), 'saved desktop state');
+    const g = await fixture(true, true);
+    await mkdir(join(g.root, 'grok'));
+    await writeFile(join(g.root, 'state.json'), 'retained');
+    const approved = await g.api.check(true);
+    await g.api.stage(approved.token, true, true);
+    const ready = await g.api.prepare('apply', true),
+      job = JSON.parse(await readFile(ready, 'utf8'));
+    job.ownerPid = 0;
+    await writeFile(ready, JSON.stringify(job));
+    execFileSync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-File',
+        resolve('scripts/portable-update-worker.ps1'),
+        '-Journal',
+        ready,
+        '-NoLaunch',
+      ],
+      { windowsHide: true, stdio: 'ignore' },
+    );
+    assert.equal(await readFile(g.exe, 'utf8'), 'new executable');
+    assert.equal(await readFile(join(g.root, 'state.json'), 'utf8'), 'retained');
+    assert.equal(
+      await readFile(join(job.profileBackup.folder, 'profile', 'state.json'), 'utf8'),
+      'retained',
+    );
+  },
+);
 test('portable staging verifies release, engine/schema/ABI, asset digests and explicit alpha/unsigned choice', async () => {
   assert.ok(compareVersions('0.6.4', '0.6.3') > 0);
   assert.ok(compareVersions('1.0.0', '0.99.9') > 0);

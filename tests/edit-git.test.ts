@@ -12,9 +12,68 @@ import {
 } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { openDocument, saveDocument } from '../electron/editor';
+import {
+  openDocument,
+  saveDocument,
+  createDocument,
+  renameDocument,
+  languageContext,
+} from '../electron/editor';
 import { git, gitState } from '../electron/workspace';
 import { changeIndex, commitIndex, fileDiff, parseChanges } from '../electron/git-actions';
+
+test('file creation and rename refuse overwrite, stale content and linked/Git-metadata paths', async () => {
+  const folder = await mkdtemp(join(tmpdir(), 'workbench-file-')),
+    root = join(folder, 'project');
+  await mkdir(root);
+  await writeFile(join(folder, 'outside.txt'), 'preserve');
+  await createDocument(root, 'fresh.txt');
+  await writeFile(join(root, 'fresh.txt'), 'draft\r\n');
+  const first = await openDocument(root, 'fresh.txt');
+  await assert.rejects(createDocument(root, 'fresh.txt'), /exist/i);
+  await assert.rejects(createDocument(root, '.git/config'), /metadata/);
+  await assert.rejects(createDocument(root, '../outside.txt'), /leaves/);
+  await createDocument(root, 'folder', true);
+  await writeFile(join(root, 'folder', 'occupied.txt'), 'keep');
+  await assert.rejects(
+    renameDocument(root, 'fresh.txt', 'folder/occupied.txt', first.revision),
+    /exist/i,
+  );
+  await writeFile(join(root, 'fresh.txt'), 'changed');
+  await assert.rejects(renameDocument(root, 'fresh.txt', 'other.txt', first.revision), /changed/);
+  const current = await openDocument(root, 'fresh.txt');
+  await symlink(folder, join(root, 'escape'), process.platform === 'win32' ? 'junction' : 'dir');
+  await assert.rejects(
+    renameDocument(root, 'fresh.txt', 'escape/outside.txt', current.revision),
+    /leaves/,
+  );
+  await renameDocument(root, 'fresh.txt', 'folder/moved.txt', current.revision);
+  assert.equal(await readFile(join(root, 'folder/moved.txt'), 'utf8'), 'changed');
+  assert.equal(await readFile(join(root, 'folder/occupied.txt'), 'utf8'), 'keep');
+  assert.equal(await readFile(join(folder, 'outside.txt'), 'utf8'), 'preserve');
+});
+test('language context loads bounded cyclic relative imports and refuses external/metadata/hardlinked source', async () => {
+  const folder = await mkdtemp(join(tmpdir(), 'workbench-language-')),
+    root = join(folder, 'project');
+  await mkdir(root);
+  await mkdir(join(root, '.git'));
+  await writeFile(join(folder, 'private.ts'), 'secret');
+  await writeFile(join(root, '.git/secret.ts'), 'metadata');
+  await link(join(folder, 'private.ts'), join(root, 'hard.ts'));
+  for (let i = 0; i < 30; i++)
+    await writeFile(
+      join(root, `part${i}.ts`),
+      `import './part${(i + 1) % 30}';export const value${i} = ${i};\n`,
+    );
+  const text = "import './part0';import '../private';import './.git/secret';import './hard';";
+  await writeFile(join(root, 'main.ts'), text);
+  const context = await languageContext(root, 'main.ts', text);
+  assert.equal(context.length, 24);
+  assert.ok(context.every((file) => /^part\d+\.ts$/.test(file.path)));
+  assert.ok(
+    !context.some((file) => file.text.includes('secret') || file.text.includes('metadata')),
+  );
+});
 
 test('editor atomically saves UTF-8/BOM/CRLF, rejects changed content and leaves no temporary files', async () => {
   const root = await mkdtemp(join(tmpdir(), 'grok-editor-'));

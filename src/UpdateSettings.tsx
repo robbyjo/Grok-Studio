@@ -5,6 +5,7 @@ export default function UpdateSettings() {
     [release, setRelease] = useState<Wire>(),
     [alpha, setAlpha] = useState(false),
     [unsigned, setUnsigned] = useState(false),
+    [migration, setMigration] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState('');
   async function run(method: string, args: Wire = {}) {
@@ -23,10 +24,16 @@ export default function UpdateSettings() {
   return (
     <section>
       <h3>Portable updates and rollback</h3>
+      {busy && (
+        <p role="status">
+          Verifying update files or preparing installation. A profile backup can take a few minutes;
+          the app pauses input during replacement preparation.
+        </p>
+      )}
       <p>
         Check and download explicitly. Replacement happens after Workbench exits, retaining the
-        previous executable. The adjacent profile stays in place. Native-engine or storage-format
-        changes require a separate migration.
+        previous executable. The adjacent profile stays in place. A compatible engine change needs
+        your approval and a verified local profile backup. Unknown storage formats remain blocked.
       </p>
       <button disabled={busy} onClick={() => void run('status')}>
         Inspect installed version and rollback
@@ -50,6 +57,15 @@ export default function UpdateSettings() {
       <button disabled={busy} onClick={() => void run('check', { alpha })}>
         Check for portable updates
       </button>
+      <label>
+        <input
+          type="checkbox"
+          checked={migration}
+          onChange={(e) => setMigration(e.target.checked)}
+        />
+        Allow a reviewed engine change with unchanged native formats. Back up private chats, media
+        and credentials locally before installation. Stop other Grok clients first.
+      </label>
       {release && (
         <div>
           {release.available ? (
@@ -65,7 +81,13 @@ export default function UpdateSettings() {
               </p>
               <button
                 disabled={busy || !release.compatibleMetadata}
-                onClick={() => void run('stage', { token: release.token, allowUnsigned: unsigned })}
+                onClick={() =>
+                  void run('stage', {
+                    token: release.token,
+                    allowUnsigned: unsigned,
+                    allowMigration: migration,
+                  })
+                }
               >
                 Download and verify reviewed update
               </button>

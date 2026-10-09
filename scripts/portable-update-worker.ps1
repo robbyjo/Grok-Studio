@@ -41,6 +41,27 @@ $taskDisplaced = Check-Owned $taskJob.displaced
 $taskExpected = if ($taskJob.operation -eq 'apply') { $taskJob.sha256 } else { $taskJob.previousSha256 }
 if ((Hash-File $taskSelected) -ne $taskExpected) { throw 'Update checksum changed.' }
 if ($taskJob.operation -eq 'apply') {
+  if ($taskJob.migration) {
+    if ($taskJob.migration -ne 'same-native-format-v1' -or -not $taskJob.profileBackup) { throw 'Migration has no verified profile backup.' }
+    $taskBackupRoot = [IO.Path]::GetFullPath((Join-Path $taskRoot 'profile-backups'))
+    $taskBackup = [IO.Path]::GetFullPath($taskJob.profileBackup.folder)
+    if ([IO.Path]::GetDirectoryName($taskBackup) -ne $taskBackupRoot -or (Get-Item -LiteralPath $taskBackup -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Invalid profile backup folder.' }
+    $taskManifestPath = Join-Path $taskBackup 'manifest.json'
+    if ((Get-Item -LiteralPath $taskManifestPath -Force).Length -gt 8MB -or (Hash-File $taskManifestPath) -ne $taskJob.profileBackup.manifestHash) { throw 'Profile backup manifest changed.' }
+    $taskManifest = Get-Content -LiteralPath $taskManifestPath -Raw | ConvertFrom-Json
+    if ($taskManifest.format -ne 1 -or $taskManifest.files.Count -gt 20000) { throw 'Invalid profile backup manifest.' }
+    foreach ($taskEntry in $taskManifest.files) {
+      if ([IO.Path]::IsPathRooted($taskEntry.path) -or $taskEntry.path -match '(^|[\\/])\.\.([\\/]|$)|:') { throw 'Unsafe backup file path.' }
+      $taskBackupFile = [IO.Path]::GetFullPath((Join-Path (Join-Path $taskBackup 'profile') $taskEntry.path))
+      if (-not $taskBackupFile.StartsWith((Join-Path $taskBackup 'profile') + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Escaping backup file.' }
+      $taskParent = $taskBackupFile
+      while ($taskParent.Length -gt $taskBackup.Length) {
+        if ((Get-Item -LiteralPath $taskParent -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Linked backup file.' }
+        $taskParent = [IO.Path]::GetDirectoryName($taskParent)
+      }
+      if ((Get-Item -LiteralPath $taskBackupFile -Force).Length -ne $taskEntry.bytes -or (Hash-File $taskBackupFile) -ne $taskEntry.sha256) { throw 'Profile backup file changed.' }
+    }
+  }
   $taskSignature = Get-AuthenticodeSignature -LiteralPath $taskSelected
   if ($taskJob.signerThumbprint) {
     if ($taskSignature.Status -ne 'Valid' -or $taskSignature.SignerCertificate.Thumbprint -ne $taskJob.signerThumbprint) { throw 'Update signature verification failed.' }

@@ -1,0 +1,37 @@
+name: Publish tested portable
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful Windows portable run ID for this exact main commit
+        required: true
+      signed:
+        description: Require the approved signed artifact (leave disabled until SignPath approval)
+        type: boolean
+        default: false
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: portable-release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: windows-latest
+    environment: releases
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+      - name: Publish only the exact tested CI artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GROK_RELEASE_RUN_ID: ${{ inputs.run_id }}
+          GROK_RELEASE_SIGNED: ${{ inputs.signed }}
+          GROK_RELEASE_HEAD: ${{ github.sha }}
+          GROK_SIGNER_THUMBPRINT: ${{ vars.GROK_SIGNER_THUMBPRINT }}
+          GROK_SIGNER_NAME: ${{ vars.GROK_SIGNER_NAME }}
+        run: node scripts/publish-ci-release.cjs

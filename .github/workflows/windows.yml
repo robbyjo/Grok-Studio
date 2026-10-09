@@ -16,6 +16,8 @@ concurrency:
 
 jobs:
   windows:
+    outputs:
+      portable-artifact-id: ${{ steps.portable.outputs.artifact-id }}
     runs-on: windows-latest
     timeout-minutes: 90
     defaults:
@@ -81,6 +83,7 @@ jobs:
             Set-Content -LiteralPath ($_.FullName + '.sha256') -Value ($taskHash + '  ' + $_.Name) -Encoding ascii
           }
       - name: Upload tested portable
+        id: portable
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: Grok-Workbench-Windows-x64-${{ github.sha }}
@@ -103,3 +106,77 @@ jobs:
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 7
+
+  sign:
+    needs: windows
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.SIGNPATH_ENABLED == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 90
+    environment: code-signing
+    permissions:
+      contents: read
+      actions: read
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+      - name: Check approved signing configuration
+        env:
+          SIGNPATH_ORGANIZATION_ID: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          SIGNPATH_PROJECT_SLUG: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          SIGNPATH_POLICY_SLUG: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          SIGNPATH_ARTIFACT_SLUG: ${{ vars.SIGNPATH_ARTIFACT_SLUG }}
+          GROK_SIGNER_THUMBPRINT: ${{ vars.GROK_SIGNER_THUMBPRINT }}
+          GROK_SIGNER_NAME: ${{ vars.GROK_SIGNER_NAME }}
+        run: |
+          foreach ($taskName in @('SIGNPATH_ORGANIZATION_ID','SIGNPATH_PROJECT_SLUG','SIGNPATH_POLICY_SLUG','SIGNPATH_ARTIFACT_SLUG','GROK_SIGNER_THUMBPRINT','GROK_SIGNER_NAME')) {
+            if (-not [Environment]::GetEnvironmentVariable($taskName)) { throw "Missing approved signing configuration: $taskName" }
+          }
+      - name: Submit CI-origin artifact for human-approved signing
+        uses: signpath/github-action-submit-signing-request@4184a38a17e5b37d026a3ed443581c1f03ae1b3a
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_SLUG }}
+          github-artifact-id: ${{ needs.windows.outputs.portable-artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: signed
+      - name: Install locked acceptance dependencies
+        run: npm ci
+      - name: Verify signer and regenerate signed metadata
+        env:
+          GROK_SIGNER_THUMBPRINT: ${{ vars.GROK_SIGNER_THUMBPRINT }}
+          GROK_SIGNER_NAME: ${{ vars.GROK_SIGNER_NAME }}
+        run: |
+          New-Item -ItemType Directory -Path release -Force | Out-Null
+          $taskExe = @(Get-ChildItem -LiteralPath signed -Filter 'Grok-Workbench-*-Portable.exe')
+          if ($taskExe.Count -ne 1) { throw 'Expected exactly one signed portable.' }
+          $env:GROK_ORIGINAL_MANIFEST = $taskExe[0].FullName + '.manifest.json'
+          Copy-Item -LiteralPath $taskExe[0].FullName -Destination release
+          node scripts/update-manifest.cjs --require-signing
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Path .runtime -Force | Out-Null
+          $taskOriginal = Get-Content -LiteralPath $env:GROK_ORIGINAL_MANIFEST -Raw | ConvertFrom-Json
+          @{sha256=$taskOriginal.engineSha256;revision=$taskOriginal.nativeRevision;bindingVersion=$taskOriginal.bindingVersion} | ConvertTo-Json | Set-Content -LiteralPath .runtime/engine.json
+      - name: Accept signed portable launch and relocation
+        run: npm run test:portable
+      - name: Upload verified signed portable
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: Grok-Workbench-Signed-Windows-x64-${{ github.sha }}
+          path: |
+            release/Grok-Workbench-*-Portable.exe
+            release/Grok-Workbench-*-Portable.exe.sha256
+            release/Grok-Workbench-*-Portable.exe.manifest.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30

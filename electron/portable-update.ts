@@ -14,6 +14,12 @@ import { join, dirname, basename, resolve } from 'node:path';
 import type { Wire } from '../shared/types';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { verifyProfileBackup } from './profile-backup';
+export const supportedNativeRevision = '2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8';
+export const supportedNativeFormat = 'pinned-grok-2bdd1d6a-v1';
+export function migrationRequired(manifest: Wire, engineHash: string) {
+  return manifest.engineSha256 !== engineHash;
+}
 export async function verifyPortableArtifact(path: string, manifest: Wire) {
   const script =
     "$ErrorActionPreference='Stop';Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Security/Microsoft.PowerShell.Security.psd1');$v=[Diagnostics.FileVersionInfo]::GetVersionInfo($env:GROK_UPDATE_INSPECT);$s=Get-AuthenticodeSignature -LiteralPath $env:GROK_UPDATE_INSPECT;@{version=(@($v.FileMajorPart,$v.FileMinorPart,$v.FileBuildPart)-join '.');product=$v.ProductName;signature=$s.Status.ToString();thumbprint=$s.SignerCertificate.Thumbprint}|ConvertTo-Json -Compress";
@@ -63,14 +69,24 @@ export function compareVersions(a: string, b: string) {
 }
 export function compatibility(manifest: Wire, version: string, engineHash: string) {
   if (
-    manifest.format !== 1 ||
+    ![1, 2].includes(manifest.format) ||
+    (manifest.format === 2 &&
+      (manifest.migration !== 'same-native-format-v1' ||
+        manifest.nativeRevision !== supportedNativeRevision ||
+        manifest.nativeStorageContract !== supportedNativeFormat)) ||
     manifest.product !== 'Grok Workbench' ||
     manifest.version !== version ||
     manifest.platform !== 'win32-x64' ||
     manifest.stateSchema !== 1 ||
     manifest.historySchema !== 1 ||
     manifest.bindingVersion !== '0.6.0' ||
-    manifest.engineSha256 !== engineHash ||
+    typeof manifest.engineSha256 !== 'string' ||
+    !/^[a-f0-9]{64}$/.test(manifest.engineSha256) ||
+    (migrationRequired(manifest, engineHash) &&
+      (manifest.format !== 2 ||
+        manifest.migration !== 'same-native-format-v1' ||
+        manifest.nativeRevision !== supportedNativeRevision ||
+        manifest.nativeStorageContract !== supportedNativeFormat)) ||
     typeof manifest.sha256 !== 'string' ||
     !/^[a-f0-9]{64}$/.test(manifest.sha256) ||
     !Number.isSafeInteger(manifest.bytes) ||
@@ -162,6 +178,7 @@ export class PortableUpdates {
     private engineHash: () => Promise<string>,
     private download = boundedFetch,
     private verifyArtifact = verifyPortableArtifact,
+    private snapshot?: (metadata: Wire) => Promise<Wire>,
   ) {}
   async status() {
     const journal = await this.journal();
@@ -196,7 +213,7 @@ export class PortableUpdates {
       repository: updateRepository,
       journal,
       scope:
-        'Reviewed portable replacement, binary rollback and unchanged profile formats. Native/schema migrations are blocked.',
+        'Reviewed portable replacement and binary rollback. An explicitly approved same-native-format engine change requires a verified local profile backup. Unknown native/storage formats remain blocked.',
     };
   }
   private async journal(): Promise<Wire | undefined> {
@@ -298,7 +315,7 @@ export class PortableUpdates {
       manifest: undefined,
     };
   }
-  async stage(token: string, allowUnsigned: boolean) {
+  async stage(token: string, allowUnsigned: boolean, allowMigration = false) {
     const choice = this.reviews.get(token);
     if (!choice?.executable || !choice.manifest)
       throw new Error('Check updates again. This release has no compatible portable manifest.');
@@ -343,6 +360,11 @@ export class PortableUpdates {
       choice.version,
       await this.engineHash(),
     );
+    const migration = migrationRequired(manifest, await this.engineHash());
+    if (migration && (allowMigration !== true || !this.snapshot))
+      throw new Error(
+        'This engine update requires explicit migration approval and a private profile backup.',
+      );
     if (
       manifest.bytes !== choice.executable.size ||
       'sha256:' + manifest.sha256 !== choice.executable.digest
@@ -381,6 +403,8 @@ export class PortableUpdates {
       signerThumbprint: manifest.signerThumbprint ?? null,
       allowUnsigned: allowUnsigned === true,
       engineSha256: manifest.engineSha256,
+      migration: migration ? manifest.migration : null,
+      nativeRevision: manifest.nativeRevision,
       sourceVersion: this.version,
       createdAt: new Date().toISOString(),
     });
@@ -436,6 +460,23 @@ export class PortableUpdates {
       displaced: join(root, 'displaced-' + randomUUID() + '.exe'),
       state: operation === 'apply' ? 'prepared' : 'rollbackPrepared',
     };
+    if (operation === 'apply' && journal.migration) {
+      if (
+        journal.migration !== 'same-native-format-v1' ||
+        journal.nativeRevision !== supportedNativeRevision ||
+        !this.snapshot
+      )
+        throw new Error('Unknown migration. Original executable retained.');
+      const profileBackup = await this.snapshot({
+        sourceVersion: this.version,
+        targetVersion: journal.version,
+        sourceEngine: await this.engineHash(),
+        targetEngine: journal.engineSha256,
+        migration: journal.migration,
+      });
+      await verifyProfileBackup(profileBackup.folder, profileBackup.manifestHash);
+      Object.assign(next, { profileBackup });
+    }
     await this.save(next);
     return join(root, 'journal.json');
   }

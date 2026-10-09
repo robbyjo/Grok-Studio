@@ -1,0 +1,11 @@
+# Coding editor
+
+Files now opens a lazy-loaded Monaco editor with line numbers, find/replace, completion, go-to-definition, local diagnostics and a visible cursor position. Ctrl+S uses Workbench’s existing UTF-8/BOM/CRLF and stale-content save checks. Unsaved drafts continue to survive file/chat navigation and application recovery. **Use plain text editor** retains the lighter text editor and syntax overlay; the choice is remembered in this profile.
+
+TypeScript, JavaScript, JSON, HTML and CSS services run in bundled local workers. Other recognized languages have syntax support; full project language-server integration is future work. TypeScript uses a standalone ESNext configuration, not your complete `tsconfig.json`, installed dependency type graph or build pipeline. JavaScript completion/navigation is available; semantic diagnostics depend on its language-service defaults. Project tests/builds remain the authoritative validation.
+
+Relative TypeScript/JavaScript imports are loaded within the canonical workspace: at most 24 dependency files, 256 path probes and 1 MiB total. Imports refresh after edits settle. Links that escape the workspace, hardlinks, Git metadata, binary files and invalid UTF-8 are rejected. Package imports, path aliases, remote modules and external language servers are not resolved by this bounded context loader. Dependency context uses saved files; unsaved drafts in other tabs are not substituted into language context. Workers and loaded models are disposed when switching files. No CDN or remote language service is used.
+
+Expand **Create or rename files** in the Files panel to create a file/folder or rename the active saved text file. Parents must exist, destinations cannot be overwritten, and unsaved drafts block rename. On concurrent edits during rename, both copies are retained for review. Case-only Windows renames and binary-file renames should use your external file manager/Git tools.
+
+Source and packaged desktop acceptance exercise real worker diagnostics, relative go-to-definition, completion, find/replace controls, keyboard saving, and file creation/rename. Backend checks cover stale content and workspace boundaries. A full assistive-technology audit remains open.

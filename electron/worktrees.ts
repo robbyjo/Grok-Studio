@@ -93,7 +93,7 @@ export class Worktrees {
     this.store.state.worktrees = [...(this.store.state.worktrees ?? []), record];
     this.store.flush();
   }
-  async previewApply(id: string, targetPath: string) {
+  async previewApply(id: string, targetPath: string, selection?: string[]) {
     const source = this.store.thread(id).cwd,
       target = await this.selected(id, targetPath);
     if (pathKey(source) === pathKey(target)) throw new Error('Choose another worktree.');
@@ -103,21 +103,36 @@ export class Worktrees {
       await git(source, ['merge-base', 'HEAD', (await git(target, ['rev-parse', 'HEAD'])).trim()])
     ).trim();
     const commit = await snapshot(source);
+    const allFiles = (
+      await git(source, ['diff', '--no-renames', '--name-only', '-z', base, commit])
+    )
+      .split('\0')
+      .filter(Boolean);
+    if (
+      selection &&
+      (!Array.isArray(selection) ||
+        !selection.length ||
+        selection.length > 1000 ||
+        selection.some((path) => typeof path !== 'string' || !allFiles.includes(path)))
+    )
+      throw new Error('Choose changed files from the current task review.');
+    const files = selection ? [...new Set(selection)].sort() : allFiles;
     const patch = await git(source, [
+      '--literal-pathspecs',
       'diff',
+      '--no-renames',
       '--binary',
       '--full-index',
       '--no-ext-diff',
       '--no-textconv',
       base,
       commit,
+      '--',
+      ...files,
     ]);
     if (!patch) throw new Error('No changes to apply.');
     if (/(?:old|new) mode 120000|(?:new|deleted) file mode 120000/.test(patch))
       throw new Error('Apply does not support symlink changes. Review these with Git.');
-    const files = (await git(source, ['diff', '--name-only', '-z', base, commit]))
-      .split('\0')
-      .filter(Boolean);
     for (const path of files) {
       const absolute = await futurePath(resolve(target, path));
       const rel = relative(target, absolute);
@@ -134,11 +149,12 @@ export class Worktrees {
       target,
       patch,
       files,
+      allFiles,
       revision: hash(patch + '\n' + (await git(target, ['rev-parse', 'HEAD'])).trim()),
     };
   }
-  async apply(id: string, target: string, revision: string) {
-    const preview = await this.previewApply(id, target);
+  async apply(id: string, target: string, revision: string, selection?: string[]) {
+    const preview = await this.previewApply(id, target, selection);
     if (preview.revision !== revision)
       throw new Error('Changes changed since review. Review again.');
     await gitInput(preview.target, ['apply', '--check', '--index', '-'], preview.patch);

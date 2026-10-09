@@ -163,7 +163,7 @@ test('aggregate quota blocks native work; reviewed retention cancels, exports/pr
       .getByRole('button', { name: 'Inspect installed version and rollback', exact: true })
       .click();
     await expect(
-      modal.locator('pre').filter({ hasText: 'unchanged profile formats' }),
+      modal.locator('pre').filter({ hasText: 'verified local profile backup' }),
     ).toBeVisible();
     await page.screenshot({ path: join(root, 'storage.png') });
   } finally {

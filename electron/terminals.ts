@@ -117,11 +117,13 @@ export class Terminals {
     this.terminals.set(id, row);
     const terminal = row;
     terminal.pty!.onData((data) => {
+      if (terminal.exited) return;
       terminal.buffer = (terminal.buffer + data).slice(-200000);
       this.emit({ type: 'terminal', id, data, seq: ++terminal.seq });
       this.schedule();
     });
     terminal.pty!.onExit(({ exitCode }) => {
+      if (terminal.exited) return;
       terminal.exited = true;
       this.emit({ type: 'terminal-exit', id, code: exitCode });
       this.persist();

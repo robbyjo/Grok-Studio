@@ -1845,6 +1845,21 @@ mark {
   display: block;
   overflow-wrap: anywhere;
 }
+.monaco-host {
+  height: 380px;
+  min-height: 240px;
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+}
+.code-editor {
+  min-width: 0;
+}
+.editor-problems button {
+  display: block;
+  text-align: left;
+  margin: 4px 0;
+}
 .syntax-editor {
   position: relative;
 }

@@ -12,12 +12,20 @@ import { Integrations } from './integrations';
 import { Configuration } from './configuration';
 import { Actions } from './actions';
 import { Worktrees } from './worktrees';
+import { TaskWorkflows } from './task-workflows';
 import { GitReview } from './git-review';
 import { ProfileStorage, profileBudget } from './profile-storage';
 import { PortableUpdates, fileHash } from './portable-update';
+import { backupProfile } from './profile-backup';
 import { Terminals } from './terminals';
 import { Mcp, addArguments } from './mcp';
-import { openDocument, saveDocument } from './editor';
+import {
+  openDocument,
+  saveDocument,
+  createDocument,
+  renameDocument,
+  languageContext,
+} from './editor';
 import { searchFiles } from './file-search';
 import { WindowsSandbox } from './windows-sandbox';
 import { changeIndex, commitIndex, fileDiff } from './git-actions';
@@ -49,6 +57,7 @@ let configuration: Configuration;
 let actions: Actions;
 let windowsSandbox: WindowsSandbox;
 let worktrees: Worktrees;
+let taskWorkflows: TaskWorkflows;
 let gitReview: GitReview;
 let profileStorage: ProfileStorage;
 let updates: PortableUpdates;
@@ -72,6 +81,7 @@ let attentionAt = 0;
 let mcpMutation = false;
 let shuttingDown = false;
 let workspaceMutation = false;
+let replacing = false;
 let dirtyDocuments = 0;
 let closing = false;
 let closePrompt = false;
@@ -129,6 +139,40 @@ async function dispatch(method: string, args: Wire) {
   )
     await profileStorage.assertCapacity(store.state.settings.profileMiB ?? 4096);
   if (shuttingDown) throw new Error('Workbench is closing.');
+  if (
+    replacing &&
+    !['state', 'updates:status', 'diagnostics:info', 'permissions', 'editor:dirty'].includes(method)
+  )
+    throw new Error('Workbench is preparing its update. Wait for replacement or recovery.');
+  if (
+    taskWorkflows?.busy() &&
+    [
+      'organization:projects',
+      'organization:chats',
+      'project:edit',
+      'updates:apply',
+      'updates:rollback',
+      'storage:prune',
+      'storage:restore',
+      'history:prune',
+    ].includes(method)
+  )
+    throw new Error(
+      'Finish or cancel the managed task before changing its profile or organization.',
+    );
+  if (
+    [
+      'agent:prompt',
+      'agent:queue',
+      'agent:queue-edit',
+      'agent:steer',
+      'thread:edit',
+      'worktrees:handoff',
+      'sessions:rewind',
+    ].includes(method) &&
+    taskWorkflows?.owns(args.id)
+  )
+    throw new Error('Finish or cancel the managed task before changing its chat.');
   if (
     workspaceMutation &&
     (/^(agent:|mcp:|integration:|sessions:|configuration:|privacy:|tasks:|auth:|storage:|updates:|organization:)/.test(
@@ -223,6 +267,29 @@ async function dispatch(method: string, args: Wire) {
     }
   };
   switch (method) {
+    case 'workflow:list':
+      return taskWorkflows.list(thread().id);
+    case 'workflow:preview':
+      return taskWorkflows.preview(thread().id, args.text, args.actionIds);
+    case 'workflow:start': {
+      if (dirtyDocuments) throw new Error('Save or discard file drafts before starting a task.');
+      await profileStorage.assertCapacity(store.state.settings.profileMiB ?? 4096);
+      const created = (await mutate(() =>
+        taskWorkflows.create(string(args.token, 'task review', 100)),
+      )) as { id: string; workflowId: string; prompt: string };
+      void taskWorkflows.run(created.id, created.prompt);
+      return { id: created.id, workflowId: created.workflowId };
+    }
+    case 'workflow:cancel':
+      return taskWorkflows.cancel(thread().id);
+    case 'workflow:review':
+      return mutate(() => taskWorkflows.review(thread().id, args.files));
+    case 'workflow:apply': {
+      if (dirtyDocuments) throw new Error('Save or discard drafts before applying task changes.');
+      return mutate(() =>
+        taskWorkflows.apply(thread().id, string(args.revision, 'task review', 64), args.files),
+      );
+    }
     case 'organization:projects': {
       store.organization(args);
       for (const id of args.projectIds)
@@ -314,7 +381,11 @@ async function dispatch(method: string, args: Wire) {
     case 'updates:stage':
       return mutate(async () => {
         await profileStorage.assertCapacity(store.state.settings.profileMiB ?? 4096);
-        return updates.stage(string(args.token, 'update review', 100), args.allowUnsigned === true);
+        return updates.stage(
+          string(args.token, 'update review', 100),
+          args.allowUnsigned === true,
+          args.allowMigration === true,
+        );
       });
     case 'updates:apply':
     case 'updates:rollback':
@@ -322,89 +393,97 @@ async function dispatch(method: string, args: Wire) {
         throw new Error('Save or discard editor drafts before replacing Workbench.');
       return mutate(async () => {
         const operation = method === 'updates:apply' ? 'apply' : 'rollback';
-        await agents.shutdownAndWait();
-        await account.shutdownAndWait();
-        terminals.shutdown();
-        store.flush();
-        const journal = await updates.prepare(operation, args.confirmed === true);
-        const worker = join(updates.root, 'portable-update-worker.ps1');
-        await writeFile(
-          worker,
-          await readFile(join(__dirname, '../../scripts/portable-update-worker.ps1')),
-        );
-        const logPath = join(updates.root, 'worker.log');
-        if (existsSync(logPath)) {
-          const info = lstatSync(logPath);
-          if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1)
-            throw new Error('Update worker log is linked or unsafe. Preserve it for repair.');
-        }
-        const log = openSync(logPath, 'w');
-        const launcher = app.isPackaged
-          ? join(process.resourcesPath, 'updater-launcher.exe')
-          : join(process.cwd(), '.runtime/updater-launcher.exe');
-        if (!existsSync(launcher)) {
-          closeSync(log);
-          throw new Error(
-            'Updater launcher is missing. Restore the complete package or build the native updater helper.',
-          );
-        }
-        const child = spawn(launcher, [worker, journal, logPath], {
-          cwd: updates.root,
-          // GUI bootstrap survives Node's kill-on-exit job and starts ordinary hidden PowerShell.
-          detached: true,
-          windowsHide: true,
-          stdio: ['ignore', log, log],
-          shell: false,
-        });
+        replacing = true;
+        window.setEnabled(false);
         try {
-          await new Promise<void>((done, reject) => {
-            child.once('spawn', done);
-            child.once('error', reject);
-          });
-          const deadline = Date.now() + 15000;
-          let ready = false;
-          while (Date.now() < deadline) {
-            const state = await readFile(journal, 'utf8')
-              .then((text) => JSON.parse(text))
-              .catch(() => undefined);
-            if (
-              state?.state === 'repairRequired' ||
-              child.exitCode != null ||
-              child.signalCode != null
-            )
-              throw new Error(
-                'Update worker failed before exit. Original retained; inspect updates/worker.log and recover the journal.',
-              );
-            if (state?.workerReady === true && state.launcherPid === child.pid) {
-              ready = true;
-              break;
-            }
-            await new Promise((done) => setTimeout(done, 100));
+          await agents.shutdownAndWait();
+          await account.shutdownAndWait();
+          terminals.shutdown();
+          store.flush();
+          const journal = await updates.prepare(operation, args.confirmed === true);
+          const worker = join(updates.root, 'portable-update-worker.ps1');
+          await writeFile(
+            worker,
+            await readFile(join(__dirname, '../../scripts/portable-update-worker.ps1')),
+          );
+          const logPath = join(updates.root, 'worker.log');
+          if (existsSync(logPath)) {
+            const info = lstatSync(logPath);
+            if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1)
+              throw new Error('Update worker log is linked or unsafe. Preserve it for repair.');
           }
-          if (!ready)
+          const log = openSync(logPath, 'w');
+          const launcher = app.isPackaged
+            ? join(process.resourcesPath, 'updater-launcher.exe')
+            : join(process.cwd(), '.runtime/updater-launcher.exe');
+          if (!existsSync(launcher)) {
+            closeSync(log);
             throw new Error(
-              'Update worker readiness timed out. Original retained; inspect updates/worker.log.',
+              'Updater launcher is missing. Restore the complete package or build the native updater helper.',
             );
+          }
+          const child = spawn(launcher, [worker, journal, logPath], {
+            cwd: updates.root,
+            // GUI bootstrap survives Node's kill-on-exit job and starts ordinary hidden PowerShell.
+            detached: true,
+            windowsHide: true,
+            stdio: ['ignore', log, log],
+            shell: false,
+          });
+          try {
+            await new Promise<void>((done, reject) => {
+              child.once('spawn', done);
+              child.once('error', reject);
+            });
+            const deadline = Date.now() + 15000;
+            let ready = false;
+            while (Date.now() < deadline) {
+              const state = await readFile(journal, 'utf8')
+                .then((text) => JSON.parse(text))
+                .catch(() => undefined);
+              if (
+                state?.state === 'repairRequired' ||
+                child.exitCode != null ||
+                child.signalCode != null
+              )
+                throw new Error(
+                  'Update worker failed before exit. Original retained; inspect updates/worker.log and recover the journal.',
+                );
+              if (state?.workerReady === true && state.launcherPid === child.pid) {
+                ready = true;
+                break;
+              }
+              await new Promise((done) => setTimeout(done, 100));
+            }
+            if (!ready)
+              throw new Error(
+                'Update worker readiness timed out. Original retained; inspect updates/worker.log.',
+              );
+          } catch (error) {
+            if (child.pid && child.exitCode == null && child.signalCode == null)
+              await new Promise<void>((done) =>
+                execFile(
+                  'taskkill.exe',
+                  ['/PID', String(child.pid), '/T', '/F'],
+                  { windowsHide: true },
+                  () => {
+                    child.kill();
+                    done();
+                  },
+                ),
+              );
+            throw error;
+          } finally {
+            closeSync(log);
+          }
+          child.unref();
+          setTimeout(() => app.quit(), 100);
+          return { quitting: true };
         } catch (error) {
-          if (child.pid && child.exitCode == null && child.signalCode == null)
-            await new Promise<void>((done) =>
-              execFile(
-                'taskkill.exe',
-                ['/PID', String(child.pid), '/T', '/F'],
-                { windowsHide: true },
-                () => {
-                  child.kill();
-                  done();
-                },
-              ),
-            );
+          replacing = false;
+          window.setEnabled(true);
           throw error;
-        } finally {
-          closeSync(log);
         }
-        child.unref();
-        setTimeout(() => app.quit(), 100);
-        return { quitting: true };
       });
     case 'drafts:get':
       return store.history.value('drafts') ?? {};
@@ -965,6 +1044,7 @@ async function dispatch(method: string, args: Wire) {
       }
     }
     case 'agent:cancel':
+      if (taskWorkflows.cancel(thread().id)) return;
       return agents.cancel(thread().id);
     case 'agent:config':
       return agents.config(
@@ -1006,6 +1086,30 @@ async function dispatch(method: string, args: Wire) {
     }
     case 'files:list':
       return files(thread().cwd, string(args.path ?? '.', 'path'));
+    case 'files:create':
+      return mutate(() =>
+        createDocument(
+          thread().cwd,
+          string(args.path, 'new file path', 4096),
+          args.folder === true,
+        ),
+      );
+    case 'files:rename':
+      if (dirtyDocuments) throw new Error('Save or discard file drafts before renaming.');
+      return mutate(() =>
+        renameDocument(
+          thread().cwd,
+          string(args.path, 'file path', 4096),
+          string(args.destination, 'new file path', 4096),
+          string(args.revision, 'file revision', 64),
+        ),
+      );
+    case 'editor:context':
+      return languageContext(
+        thread().cwd,
+        string(args.path, 'file path', 4096),
+        string(args.text, 'source text', 1024 * 1024),
+      );
     case 'files:search': {
       const id = thread().id,
         previous = fileSearches.get(id);
@@ -1300,6 +1404,15 @@ else {
       process.env.PORTABLE_EXECUTABLE_FILE,
       app.getVersion(),
       () => fileHash(embeddedEngine()),
+      undefined,
+      undefined,
+      (metadata) =>
+        backupProfile(
+          app.getPath('userData'),
+          grokProfile(),
+          join(app.getPath('userData'), 'updates'),
+          metadata,
+        ),
     );
     agents.beforeWork = () =>
       profileStorage.assertCapacity(store.state.settings.profileMiB ?? 4096);
@@ -1335,6 +1448,15 @@ else {
       () => process.env.PORTABLE_EXECUTABLE_FILE,
     );
     worktrees = new Worktrees(store);
+    taskWorkflows = new TaskWorkflows(store, worktrees, actions);
+    taskWorkflows.prompt = (id, text) => agents.prompt(id, text, []);
+    taskWorkflows.stopAgent = (id) => agents.cancel(id);
+    taskWorkflows.configure = async (id, selection) => {
+      if (selection.mode) await agents.config(id, '__mode', selection.mode);
+      for (const model of selection.models ?? []) await agents.config(id, model.id, model.value);
+    };
+    taskWorkflows.test = (id, actionId, revision) =>
+      dispatch('actions:run', { id, actionId, revision });
     gitReview = new GitReview(store);
     terminals = new Terminals(emit, store.history);
     diagnostics = new Diagnostics(join(app.getPath('userData'), 'diagnostics'));
@@ -1349,6 +1471,7 @@ else {
       try {
         const result = await dispatch(operation, args as Wire);
         if (
+          !replacing &&
           ![
             'state',
             'editor:dirty',
@@ -1368,11 +1491,12 @@ else {
           return { ...result, entries: store.page((result as any).id).entries };
         return result;
       } catch (error) {
-        diagnostics.record('operation-failed', {
-          method: operation,
-          durationMs: Date.now() - started,
-          code: (error as any).code ?? 'error',
-        });
+        if (!replacing)
+          diagnostics.record('operation-failed', {
+            method: operation,
+            durationMs: Date.now() - started,
+            code: (error as any).code ?? 'error',
+          });
         throw error;
       }
     });

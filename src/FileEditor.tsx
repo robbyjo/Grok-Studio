@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { TextDocument } from '../shared/types';
 import { highlight } from './syntax';
+const CodeEditor = lazy(() => import('./CodeEditor'));
 
 export interface FileDraft extends TextDocument {
   savedText: string;
@@ -12,6 +13,7 @@ export default function FileEditor({
   update,
   busy,
   location,
+  navigate,
 }: {
   id: string;
   path: string;
@@ -19,7 +21,11 @@ export default function FileEditor({
   update: (draft: FileDraft) => void;
   busy: boolean;
   location?: { line?: number; column?: number };
+  navigate: (path: string, location?: { line?: number; column?: number }) => void;
 }) {
+  const [plain, setPlain] = useState(
+    () => localStorage.getItem('workbench-editor-mode') === 'plain',
+  );
   const input = useRef<HTMLTextAreaElement>(null),
     overlay = useRef<HTMLPreElement>(null);
   const syntax = useMemo(
@@ -111,6 +117,14 @@ export default function FileEditor({
   return (
     <div className="file-editor">
       <div className="editor-actions">
+        <button
+          onClick={() => {
+            localStorage.setItem('workbench-editor-mode', plain ? 'code' : 'plain');
+            setPlain(!plain);
+          }}
+        >
+          {plain ? 'Use code editor' : 'Use plain text editor'}
+        </button>
         <span>
           {dirty ? 'Unsaved draft' : 'Saved'}
           {draft?.savedText.includes('\r\n') ? ' · CRLF' : ' · LF'}
@@ -142,7 +156,20 @@ export default function FileEditor({
           {error}
         </div>
       )}
-      {draft && (
+      {draft && !plain && (
+        <Suspense fallback={<p role="status">Loading code editor…</p>}>
+          <CodeEditor
+            id={id}
+            path={path}
+            text={draft.text}
+            change={change}
+            save={() => void save()}
+            location={location}
+            navigate={navigate}
+          />
+        </Suspense>
+      )}
+      {draft && plain && (
         <div className={`syntax-editor ${syntax === undefined ? '' : 'highlighted'}`}>
           {syntax !== undefined && (
             <pre ref={overlay} className="syntax-overlay" aria-hidden="true">

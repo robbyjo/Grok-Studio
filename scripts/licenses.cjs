@@ -2,10 +2,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
 const notices = [
-  'Production dependency license notices for Grok Workbench\nGenerated from the installed package-lock.json graph.\n',
+  'Production and bundled renderer dependency license notices for Grok Workbench\nGenerated from the installed package-lock.json graph.\n',
 ];
 for (const [location, info] of Object.entries(lock.packages)) {
-  if (!location || info.dev) continue;
+  if (!location || (info.dev && location !== 'node_modules/monaco-editor')) continue;
   const directory = path.resolve(location);
   if (!fs.existsSync(directory)) continue; // Other-platform optional binaries are not shipped here.
   const meta = JSON.parse(fs.readFileSync(path.join(directory, 'package.json'), 'utf8'));
@@ -14,7 +14,7 @@ for (const [location, info] of Object.entries(lock.packages)) {
   );
   const files = fs
     .readdirSync(directory)
-    .filter((name) => /^(license|licence|copying|notice)(\.|$)/i.test(name));
+    .filter((name) => /^(license|licence|copying|notice|thirdpartynotices)(\.|$)/i.test(name));
   for (const file of files)
     if (fs.statSync(path.join(directory, file)).isFile())
       notices.push(`\n${file}\n${fs.readFileSync(path.join(directory, file), 'utf8')}\n`);

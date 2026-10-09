@@ -48,6 +48,7 @@ import ConfigurationEditor from './ConfigurationEditor';
 import WorktreeTools from './WorktreeTools';
 import GitRepositoryTools from './GitRepositoryTools';
 import ProjectActions from './ProjectActions';
+import TaskWorkflow from './TaskWorkflow';
 import { type FileDraft } from './FileEditor';
 import WorkspaceFiles from './WorkspaceFiles';
 import GitChanges from './GitChanges';
@@ -392,18 +393,34 @@ export default function App() {
   }, [drafts, fileDrafts, attached]);
   useEffect(() => {
     if (!activeId) return;
+    let current = true;
     setHistoryPage(undefined);
     void window.desktop
       .call<State>('thread:select', { id: activeId })
-      .then(setState)
-      .catch((e) => setError(String(e)));
+      .then((value) => {
+        if (current) setState(value);
+      })
+      .catch((e) => {
+        if (current) setError(String(e));
+      });
+    return () => {
+      current = false;
+    };
   }, [activeId]);
   useEffect(() => {
+    let current = true;
     if (searchHit?.entryId && searchHit.threadId === activeId)
       void window.desktop
         .call('history:page', { id: activeId, entryId: searchHit.entryId })
-        .then(setHistoryPage)
-        .catch((e) => setError(String(e)));
+        .then((value) => {
+          if (current) setHistoryPage(value);
+        })
+        .catch((e) => {
+          if (current) setError(String(e));
+        });
+    return () => {
+      current = false;
+    };
   }, [searchHit, activeId]);
   async function action(method: string, args: Wire = {}) {
     try {
@@ -1030,6 +1047,7 @@ export default function App() {
               <div ref={end} />
             </div>
             <div className="composer-area">
+              {thread && <TaskWorkflow key={thread.id} thread={thread} select={setActiveId} />}
               {currentPermissions.map((permission) => (
                 <div className="permission-card" key={permission.id}>
                   <div className="permission-title">

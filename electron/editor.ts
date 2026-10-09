@@ -1,12 +1,110 @@
-import { readFile, stat, open, rename, unlink, chmod, realpath } from 'node:fs/promises';
-import { dirname, join, relative, sep } from 'node:path';
+import {
+  readFile,
+  stat,
+  open,
+  rename,
+  unlink,
+  chmod,
+  realpath,
+  copyFile,
+  mkdir,
+} from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { dirname, join, relative, sep, posix } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
-import { inside } from './paths';
+import { inside, insideFuture } from './paths';
 import type { TextDocument } from '../shared/types';
 
 const limit = 1024 * 1024;
 const revision = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 const saving = new Set<string>();
+export async function createDocument(root: string, path: string, folder = false) {
+  const target = await insideFuture(root, path);
+  // Parent must already exist; never create an unreviewed tree of directories.
+  await inside(root, dirname(target));
+  if (folder) await mkdir(target);
+  else {
+    const file = await open(target, 'wx', 0o600);
+    await file.close();
+  }
+  return {
+    path: relative(await realpath(root), target)
+      .split(sep)
+      .join('/'),
+    folder,
+  };
+}
+export async function renameDocument(
+  root: string,
+  path: string,
+  destination: string,
+  expected: string,
+) {
+  const document = await openDocument(root, path);
+  if (document.revision !== expected) throw new Error('File changed; reopen it before renaming.');
+  const { target } = await editable(root, path),
+    next = await insideFuture(root, destination);
+  await inside(root, dirname(next));
+  if (next.toLowerCase() === target.toLowerCase()) throw new Error('Choose a different filename.');
+  await copyFile(target, next, constants.COPYFILE_EXCL);
+  if (
+    (await openDocument(root, path)).revision !== expected ||
+    (await openDocument(root, destination)).revision !== expected
+  )
+    throw new Error('File changed while renaming. Both copies were kept for review.');
+  await unlink(target);
+  return {
+    path: relative(await realpath(root), next)
+      .split(sep)
+      .join('/'),
+  };
+}
+export async function languageContext(root: string, path: string, text: string) {
+  await editable(root, path);
+  if (!/\.(?:[mc]?[tj]sx?|json)$/i.test(path)) return [];
+  const rows: { path: string; text: string }[] = [],
+    seen = new Set<string>([path.replaceAll('\\', '/')]);
+  let bytes = 0,
+    attempts = 0;
+  const queue = [{ path: path.replaceAll('\\', '/'), text: text.slice(0, 200000) }];
+  while (queue.length && rows.length < 24 && bytes < limit) {
+    const source = queue.shift()!;
+    const imports = source.text.matchAll(
+      /(?:\bfrom\s*|\bimport\s*|\brequire\s*\(\s*)['"](\.[^'"\r\n]{1,256})['"]/g,
+    );
+    for (const match of imports) {
+      const base = posix.normalize(posix.join(posix.dirname(source.path), match[1]));
+      const candidates = /\.(?:[mc]?[tj]sx?|json)$/i.test(base)
+        ? [base]
+        : [
+            base + '.ts',
+            base + '.tsx',
+            base + '.js',
+            base + '.jsx',
+            base + '.json',
+            base + '/index.ts',
+            base + '/index.js',
+          ];
+      for (const candidate of candidates) {
+        if (seen.has(candidate) || rows.length >= 24) continue;
+        if (++attempts > 256) return rows;
+        try {
+          const doc = await openDocument(root, candidate);
+          const size = Buffer.byteLength(doc.text);
+          if (bytes + size > limit) continue;
+          seen.add(candidate);
+          bytes += size;
+          rows.push({ path: candidate, text: doc.text });
+          queue.push({ path: candidate, text: doc.text });
+          break;
+        } catch {
+          /* Missing, binary, linked and escaping imports are never loaded. */
+        }
+      }
+    }
+  }
+  return rows;
+}
 async function editable(root: string, path: string) {
   const canonicalRoot = await realpath(root);
   const target = await inside(canonicalRoot, path);

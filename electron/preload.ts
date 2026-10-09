@@ -1,6 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { DesktopAPI, DesktopEvent } from '../shared/types';
 const methods = new Set([
+  'workflow:list',
+  'workflow:preview',
+  'workflow:start',
+  'workflow:cancel',
+  'workflow:review',
+  'workflow:apply',
   'auth:status',
   'auth:save',
   'auth:forget',
@@ -106,6 +112,9 @@ const methods = new Set([
   'settings:save',
   'settings:executable',
   'files:list',
+  'files:create',
+  'files:rename',
+  'editor:context',
   'files:search',
   'files:cancel-search',
   'files:tabs',
