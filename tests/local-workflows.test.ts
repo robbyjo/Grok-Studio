@@ -1,6 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, unlink, access, symlink } from 'node:fs/promises';
+import {
+  mkdtemp,
+  mkdir,
+  writeFile,
+  readFile,
+  unlink,
+  access,
+  symlink,
+  realpath,
+} from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Store } from '../electron/store';
@@ -16,7 +25,7 @@ import { GitReview } from '../electron/git-review';
 import { indexRevision } from '../electron/git-actions';
 const delay = (ms: number) => new Promise((done) => setTimeout(done, ms));
 async function fixture() {
-  const folder = await mkdtemp(join(tmpdir(), 'grok-local-')),
+  const folder = await realpath(await mkdtemp(join(tmpdir(), 'grok-local-'))),
     root = join(folder, 'repo');
   await mkdir(root);
   await git(root, ['init', '-b', 'main']);

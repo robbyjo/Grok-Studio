@@ -1,5 +1,5 @@
-import { join, resolve, dirname } from 'node:path';
-import { readdir } from 'node:fs/promises';
+import { join, resolve, dirname, relative, isAbsolute, sep } from 'node:path';
+import { readdir, realpath } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
@@ -74,15 +74,19 @@ export class Configuration {
     for (const path of ['AGENTS.md', 'AGENT.md', 'CLAUDE.md'])
       await add(this.home(), path, 'user', 'markdown');
     // Match the native Git boundary: a non-repository project has no ancestor walk.
-    const roots = [resolve(cwd)];
+    const selected = await realpath(cwd);
+    const roots = [selected];
     try {
       const result = await promisify(execFile)('git', ['rev-parse', '--show-toplevel'], {
         cwd,
         windowsHide: true,
         timeout: 5000,
       });
-      const stop = resolve(result.stdout.trim());
-      let current = resolve(cwd);
+      const stop = await realpath(result.stdout.trim());
+      const rel = relative(stop, selected);
+      if (rel === '..' || rel.startsWith('..' + sep) || isAbsolute(rel))
+        throw new Error('Git root is not an ancestor of this project.');
+      let current = selected;
       while (current.toLowerCase() !== stop.toLowerCase() && roots.length < 64) {
         const parent = dirname(current);
         if (parent === current) break;
@@ -108,7 +112,7 @@ export class Configuration {
         await add(
           root,
           path,
-          root === resolve(cwd) ? 'project' : 'ancestor',
+          root === selected ? 'project' : 'ancestor',
           path.endsWith('.toml') ? 'toml' : path.endsWith('.json') ? 'json' : 'markdown',
         );
       }
@@ -120,7 +124,7 @@ export class Configuration {
               await add(
                 root,
                 join(folder, entry.name),
-                root === resolve(cwd) ? 'project' : 'ancestor',
+                root === selected ? 'project' : 'ancestor',
                 'markdown',
               );
         } catch (error) {
