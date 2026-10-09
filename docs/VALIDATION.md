@@ -2,6 +2,8 @@
 
 Validation performed on Windows x64 on October 6–8, 2026 (America/New_York). Current version: **Grok Workbench 0.7.0**, with the Grok Rust library embedded instead of a packaged CLI. Earlier sections retain historical version-specific names and results.
 
+On October 9, the existing v0.7.0 release title became **Grok Workbench 0.7.0 (alpha)** and its GitHub prerelease flag was cleared so it could be marked Latest and appear in the repository sidebar. GitHub excludes prereleases from Latest. Its alpha/unsigned status and documented acceptance limits still apply. The release ID, tag/source target, asset IDs, sizes and SHA-256 digests are unchanged; no new executable or version was published. GitHub's latest-release endpoint resolves to v0.7.0.
+
 ## Version 0.8.0 source work (unreleased, October 9)
 
 The new source implements reviewed task → test → review, a lazy Monaco coding editor, compatible same-pinned-native-format engine upgrades with verified durable-profile backups, and gated CI signing/publication. The public v0.7.0 assets and tag are unchanged. Foundation enrollment/approval is pending: the owner has no SignPath account yet; GitHub MFA is confirmed, while SignPath MFA and signing-role confirmation are outstanding.
